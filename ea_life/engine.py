@@ -71,6 +71,7 @@ def config_from_env() -> Config:
         max_age=int(os.environ.get("SIM_MAX_AGE","2600")),
         world_model_enabled=os.environ.get("SIM_WORLD_MODEL_ENABLED","1") != "0",
         collective_enabled=os.environ.get("SIM_COLLECTIVE_ENABLED","1") != "0",
+        max_world_model_states=int(os.environ.get("SIM_WORLD_MODEL_STATES","256")),
     )
 
 def new_genome(rng: random.Random) -> dict[str,float]:
