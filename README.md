@@ -107,6 +107,7 @@ The default scenario is mixed, with twelve initial organisms and a maximum live 
 | SAVE_EVERY | 10 | Checkpoint interval |
 | SIM_SEED | 20261015 | Python RNG seed |
 | SIM_WORLD_MODEL_ENABLED | 1 | Set to 0 to disable the predictive transition model |
+| SIM_WORLD_MODEL_STATES | 256 | Maximum state/action entries per organism |
 | SIM_COLLECTIVE_ENABLED | 1 | Set to 0 to disable shared environmental trails |
 | RESUME | 0 | Set to 1 to load the checkpoint volume |
 
