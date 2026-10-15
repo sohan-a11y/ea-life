@@ -41,18 +41,18 @@ function step(){
     let cand=[];
     ACTIONS.forEach((d,i)=>{
       const x=a.x+d[0],y=a.y+d[1];if(x<0||y<0||x>=N||y>=N)return;
-      const idx=y*N+x,local=1/Math.sqrt(1+(visits.get(idx)||0)),crowd=occupied.has(idx)&&idx!==pos?.65:0;
+      const idx=y*N+x,local=1/Math.sqrt(1+(visits.get(idx)||0)),crowd=(occupied.has(idx)&&idx!==pos)?0.65:0;
       cand.push({i,x,y,idx,score:a.genome.food*world[idx]+a.genome.novelty*local+a.q[i]*.06-crowd+rand(-.035,.035)});
     });
     cand.sort((a,b)=>b.score-a.score);const options=cand.slice(0,Math.min(4,cand.length));const pick=options[Math.floor(Math.random()*options.length)];
     if(pick.idx!==pos){occupied.delete(pos);if(!occupied.has(pick.idx)){a.x=pick.x;a.y=pick.y}occupied.add(a.y*N+a.x)}
-    const idx=a.y*N+a.x,res=world[idx],moving=pick.x!==pos%N||pick.y!==Math.floor(pos/N),reward=res*5-(moving?.5:.18);
+    const idx=a.y*N+a.x,res=world[idx],moving=pick.x!==pos%N||pick.y!==Math.floor(pos/N),reward=res*5-(moving ? .5 : .18);
     const oldQ=a.q[pick.i],error=reward-oldQ;a.q[pick.i]+=.12*error;
     const oldE=a.error;a.error=.9*oldE+.1*Math.min(1,Math.abs(error)/5);a.progress=clamp(Math.max(0,oldE-a.error)*4);
     a.totalError+=Math.min(1,Math.abs(error)/5);a.errorCount++;
-    const edge=Math.min(a.x,a.y,N-1-a.x,N-1-a.y),risk=edge<2?.35:0,cost=.2+(moving?.25:0);
+    const edge=Math.min(a.x,a.y,N-1-a.x,N-1-a.y),risk=edge<2 ? .35 : 0,cost=.2+(moving ? .25 : 0);
     a.curiosity=curiosity(a,novelty,Math.min(1,Math.abs(error)/5),risk,cost);
-    a.energy=clamp(a.energy+res*3-.42-(moving?.16:0),0,100);world[idx]=Math.max(0,res-.055);a.age++;a.reward+=reward;
+    a.energy=clamp(a.energy+res*3-.42-(moving ? .16 : 0),0,100);world[idx]=Math.max(0,res-.055);a.age++;a.reward+=reward;
     // Built-in topic labels are local stimuli, not web research.
     if(a.curiosity>.84&&tick-a.lastTopic>115&&a.topics.length<TOPICS.length){
       const choices=TOPICS.filter(t=>!a.topics.includes(t));
