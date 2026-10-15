@@ -13,6 +13,17 @@ This is a research simulation, not a claim of consciousness or general intellige
 
 The broker’s destination allowlist is enforced in application code, not by a host firewall. For stronger guarantees, enforce broker egress with host firewall rules or a restrictive outbound proxy on a dedicated Linux VM. Never mount the Docker socket or host filesystem into the life container.
 
+## Run immediately in a website (GitHub Pages)
+
+The quickest hosted visual demo is in the `/docs` folder. It runs entirely in the browser and does not require Codespaces, Docker, Python, a backend, or outbound requests from the demo.
+
+One-time setup (repository is public):
+1. Open **Settings → Pages**.
+2. Under **Build and deployment**, choose **Deploy from a branch**.
+3. Select branch **main** and folder **/docs**, then click **Save**.
+
+GitHub Pages should publish the demo at https://sohan-a11y.github.io/ea-life/ after its first build. The browser simulation runs while the web page is open. It is a lightweight visual demonstration; the full Python/Docker experiment remains in the repository and is not executed by GitHub Pages.
+
 ## Run in GitHub Codespaces
 
 1. Open this repository and select Code → Codespaces → Create codespace.
