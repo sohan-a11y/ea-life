@@ -1,19 +1,43 @@
-# EA-Life v2 — artificial-life research platform
+# EA-Life v3 — predictive and collective artificial-life research platform
 
-EA-Life v2 advances the original grid experiment into a configurable research platform for embodied agents, intrinsic motivation, online prediction, bounded memory, evolutionary variation and repeatable task experiments. It is split into a network-isolated simulator, a narrow read-only research broker, and a dashboard that exposes observations rather than private genome or memory state.
+EA-Life v3 extends the grid experiment with per-organism predictive transition learning and shared environmental signals. It is a configurable research platform for embodied agents, intrinsic motivation, bounded memory, evolutionary variation, emergent collective behavior, and repeatable controlled experiments. It is split into a network-isolated simulator, a narrow read-only research broker, and a dashboard that exposes observations rather than private genome or memory state.
 
 This is **an artificial-life simulation, not evidence of consciousness or general intelligence**. Each capability has an explicit implementation and measurable proxy; research conclusions should come from repeated controlled runs, baselines and exports, not a single visually interesting run.
 
-## What is new in v2
+## What is new in v3
 
 - **Four behavior roles:** forager, explorer, navigator and hazard-avoider. Run a mixed ecology or a single-task scenario.
-- **Online prediction and value learning:** bounded state-action Q tables, per-action reward models, temporal-difference updates and prediction-error tracking.
+- **Predictive world model:** each organism learns a bounded state/action-to-next-state distribution and reward estimate, using online counts and reward moments; prediction error, next-state accuracy and surprise are tracked separately from the Q-learning TD error.
+- **Collective behavior:** organisms read shared environmental resource and danger traces. They deposit bounded signals, which decay over time; genomes evolve separate attraction and avoidance weights. Signals are read from a pre-tick snapshot, avoiding within-tick order advantage.
+- **Ablation-ready experiments:** independently turn prediction and collective signals on/off; the four-condition suite compares baseline, predictive-only, collective-only and full systems on matched seeds.
 - **Intrinsic motivation:** novelty, uncertainty, learning progress and risk contribute to a distinct curiosity signal.
 - **Evolution:** mutable numerical genomes, energy budgets, lineage IDs, inherited traits, birth/death accounting and population caps.
 - **Bounded memory:** compact recent transitions, bounded state-action memory and bounded semantic term counts.
 - **Research protocol:** only named topic IDs enter the broker queue. The broker performs allowlisted Wikipedia HTTPS GETs, returns short snippets and never executes retrieved text.
 - **Experiment observability:** resource and hazard layers, beacons, individual organisms, lineages, task completions, diversity, prediction error and population history.
 - **Repeatability:** deterministic simulation seed, checkpoints, experiment summaries, configurable scenario and CI tests.
+
+## Research milestone v3: prediction and collective behavior
+
+This release adds two distinct mechanisms whose impact should be evaluated independently:
+
+1. **Predictive transition model.** For a compact state key and action, each organism stores bounded counts of observed next-state keys and online reward moments. The model's reward estimate contributes to action scoring in proportion to its sample confidence. Per-organism storage is capped by `max_world_model_states`; each transition keeps at most 24 next-state outcomes. This remains a small tabular model, not a neural or general-purpose world model.
+2. **Shared environmental traces.** Successful visits to resource-rich cells deposit a forage trace; encounters with hazards deposit a danger trace. All organisms read the same pre-tick view, and the traces decay each tick. This is an environmental-memory / stigmergy experiment, not direct communication or a claim of social intelligence.
+3. **Evaluation, not just visualization.** The dashboard reports reward prediction MAE, next-state accuracy, surprise, model entries, trail coverage and trail mass. Run matched ablations with identical seeds to see whether the mechanisms improve task outcomes, survival, energy or goal completion. Use many seeds and confidence intervals before making research claims.
+
+Quick four-condition ablation on the mixed scenario:
+
+~~~bash
+python experiments.py --ablation-suite --seeds 10 --ticks 2000 --grid-size 48 --population 8 --max-population 16 --max-organisms 200 --output v3-ablation.csv
+~~~
+
+Run the full scenario-by-ablation matrix:
+
+~~~bash
+python experiments.py --all-scenarios --ablation-suite --seeds 10 --ticks 2000 --grid-size 48 --population 8 --max-population 16 --max-organisms 200 --output v3-matrix.csv
+~~~
+
+Individual controls for custom comparisons are `--disable-world-model` and `--disable-collective`. Each CSV row records which pathways were enabled. Details and hypotheses are in [the v3 research protocol](docs/research-v3.md).
 
 ## Run locally
 
@@ -82,13 +106,16 @@ The default scenario is mixed, with twelve initial organisms and a maximum live 
 | TICK_SLEEP | 0.04 | Delay per tick; lower is faster |
 | SAVE_EVERY | 10 | Checkpoint interval |
 | SIM_SEED | 20261015 | Python RNG seed |
+| SIM_WORLD_MODEL_ENABLED | 1 | Set to 0 to disable the predictive transition model |
+| SIM_WORLD_MODEL_STATES | 256 | Maximum state/action entries per organism |
+| SIM_COLLECTIVE_ENABLED | 1 | Set to 0 to disable shared environmental trails |
 | RESUME | 0 | Set to 1 to load the checkpoint volume |
 
 For a controlled comparison, change one factor at a time, record the seed and scenario, and compare multiple seeds. A single run is not evidence that a mutation or behavior is generally superior.
 
 ## Architecture
 
-- **ea_life/engine.py:** world state, agents, policy scoring, learning, memory, curiosity, reproduction and metrics.
+- **ea_life/engine.py:** world state, bounded predictive transition models, shared trail dynamics, agent policies, learning, memory, curiosity, reproduction and metrics.
 - **runner.py:** simulation lifecycle, checkpointing, event persistence and pause/resume/reset flags.
 - **dashboard.py:** standard-library HTTP server with narrow same-origin control actions.
 - **broker.py:** fixed-topic, read-only reference lookup.
@@ -104,4 +131,4 @@ The broker's destination restriction is implemented in application code; Compose
 
 ## Current scientific limitations
 
-The action-value model is small and handcrafted, the semantic memory is a bounded count of words from short snippets, and roles are simple task labels. This is not a language-capable agent, a general world model or a neural cellular automaton. Future research milestones should be separate, measured modules: richer predictive state representations, multi-cell collective behaviors, ablations, multi-seed benchmarks, and optionally a locally hosted language model behind a constrained planner interface.
+The action-value model and predictive transition model are small tabular systems; semantic memory is a bounded count of words from short snippets, and roles are simple task labels. The world model does not perform latent-state learning or long-horizon imagination, and collective traces do not imply centralized planning. This is not a language-capable agent, a general world model or a neural cellular automaton. Next research work should investigate multi-step predictive rollouts, richer latent representations, independent resource dynamics, spatial neural cellular automata, and preregistered multi-seed studies. Until those are measured, treat the current modules as testable prototypes.

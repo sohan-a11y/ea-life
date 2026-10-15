@@ -51,7 +51,9 @@ class EngineTests(unittest.TestCase):
     def test_public_snapshot_hides_private_internal_state(self):
         sim = Simulation(Config(grid_size=48, initial_population=4, max_population=8), seed=8)
         snap = sim.public_snapshot()
-        self.assertEqual(snap["schema_version"], 2)
+        self.assertEqual(snap["schema_version"], 3)
+        self.assertIn("resource_trails", snap)
+        self.assertIn("danger_trails", snap)
         self.assertEqual(len(snap["resources"]), 48)
         self.assertNotIn("genome", snap["agents"][0])
         self.assertNotIn("q_table", snap["agents"][0])
@@ -103,6 +105,49 @@ class EngineTests(unittest.TestCase):
             incompatible = Simulation(Config(grid_size=48, initial_population=4, max_population=9), seed=5)
             with self.assertRaises(ValueError):
                 incompatible.load_state_dict(data)
+
+    def test_predictive_world_model_learns_and_stays_bounded(self):
+        cfg = Config(grid_size=48, initial_population=4, max_population=8,
+                     max_world_model_states=16)
+        sim = Simulation(cfg, seed=101)
+        for _ in range(36):
+            sim.step()
+        self.assertGreater(sim.metrics()["world_model_entries"], 0)
+        self.assertGreater(sim.metrics()["world_model_predictions"], 0)
+        for agent in sim.agents:
+            self.assertLessEqual(len(agent.get("world_model", {})), 16)
+            for row in agent.get("world_model", {}).values():
+                self.assertLessEqual(len(row["next_counts"]), 24)
+        self.assertGreaterEqual(sim.metrics()["world_model_next_state_accuracy"], 0.0)
+        self.assertLessEqual(sim.metrics()["world_model_next_state_accuracy"], 1.0)
+
+    def test_world_model_and_collective_mechanisms_can_be_ablated(self):
+        cfg = Config(grid_size=48, initial_population=4, max_population=8,
+                     world_model_enabled=False, collective_enabled=False)
+        sim = Simulation(cfg, seed=102)
+        for _ in range(12):
+            sim.step()
+        self.assertEqual(sim.metrics()["world_model_entries"], 0)
+        self.assertTrue(all(not a.get("world_model") for a in sim.agents))
+        self.assertEqual(sum(sim.resource_trails), 0.0)
+        self.assertEqual(sum(sim.danger_trails), 0.0)
+
+    def test_collective_resource_trails_are_shared_and_visible(self):
+        cfg = Config(grid_size=48, initial_population=4, max_population=8,
+                     evolution_enabled=False)
+        sim = Simulation(cfg, seed=103)
+        for agent in sim.agents:
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    x, y = agent["x"] + dx, agent["y"] + dy
+                    if 0 <= x < cfg.grid_size and 0 <= y < cfg.grid_size:
+                        sim.resources[sim._idx(x, y)] = .95
+        for _ in range(4):
+            sim.step()
+        self.assertGreater(sum(sim.resource_trails), 0.0)
+        self.assertGreater(sim.metrics()["collective_signal_coverage"], 0.0)
+        snapshot = sim.public_snapshot()
+        self.assertEqual(len(snapshot["resource_trails"]), cfg.grid_size)
 
     def test_action_space_has_stay_and_eight_moves(self):
         self.assertEqual(len(ACTIONS), 9)

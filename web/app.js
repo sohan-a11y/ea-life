@@ -5,12 +5,15 @@ const COLORS=["#70bbff","#72dfbc","#b7a3ff","#f3c879","#ff9c83","#8bdde7"];
 let worldCanvas,popCanvas;
 function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function drawWorld(s){
- const c=worldCanvas,x=c.getContext("2d"),n=s.grid_size||96,r=s.resources||[],h=s.hazards||[],cell=c.width/n;
+ const c=worldCanvas,x=c.getContext("2d"),n=s.grid_size||96,r=s.resources||[],h=s.hazards||[],rt=s.resource_trails||[],dt=s.danger_trails||[],cell=c.width/n;
  x.fillStyle="#071018";x.fillRect(0,0,c.width,c.height);
  for(let y=0;y<n;y++)for(let z=0;z<n;z++){
   const rv=Number((r[y]||[])[z])||0,hv=Number((h[y]||[])[z])||0,px=z*cell,py=y*cell;
   if(rv>.012){x.fillStyle="rgba(243,200,121,"+Math.min(.9,rv)+")";x.fillRect(px,py,Math.ceil(cell),Math.ceil(cell))}
   if(hv>.07){x.fillStyle="rgba(241,107,114,"+Math.min(.7,hv*.7)+")";x.fillRect(px,py,Math.ceil(cell),Math.ceil(cell))}
+  const tv=Number((rt[y]||[])[z])||0,dv=Number((dt[y]||[])[z])||0;
+  if(tv>.025){x.fillStyle="rgba(114,223,188,"+Math.min(.34,tv*.55)+")";x.fillRect(px,py,Math.ceil(cell),Math.ceil(cell))}
+  if(dv>.025){x.fillStyle="rgba(183,163,255,"+Math.min(.36,dv*.6)+")";x.fillRect(px,py,Math.ceil(cell),Math.ceil(cell))}
  }
  (s.beacons||[]).forEach(b=>{x.strokeStyle="#a9ffe5";x.lineWidth=1.4;x.beginPath();x.rect((b.x+.22)*cell,(b.y+.22)*cell,cell*.56,cell*.56);x.stroke()});
  (s.agents||[]).filter(a=>a.alive).forEach(a=>{
@@ -60,6 +63,14 @@ function render(s){
  $("learningGauge").style.width=Math.min(100,100*Number(m.mean_learning_progress||0)*4)+"%";
  $("coverage").textContent=(100*Number(m.resource_coverage||0)).toFixed(1)+"%";
  $("topics").textContent=m.research_topics_known??0;$("energy").textContent=Number(m.mean_energy||0).toFixed(1);
+ $("wmError").textContent=Number(m.world_model_reward_mae||0).toFixed(3);
+ $("wmAccuracy").textContent=(100*Number(m.world_model_next_state_accuracy||0)).toFixed(1)+"%";
+ $("wmEntries").textContent=Number(m.world_model_entries||0).toLocaleString();
+ $("wmSurprise").textContent=Number(m.world_model_surprise||0).toFixed(3);
+ $("collectiveCoverage").textContent=(100*Number(m.collective_signal_coverage||0)).toFixed(1)+"%";
+ $("resourceTrailMass").textContent=Number(m.resource_trail_mass||0).toFixed(3);
+ $("dangerTrailMass").textContent=Number(m.danger_trail_mass||0).toFixed(3);
+ $("collectiveStatus").textContent=Number(m.collective_signal_coverage||0)>0?"ACTIVE":"WARMING";
  $("error").textContent=Number(m.mean_prediction_error||0).toFixed(3);$("goals").textContent=m.goals_reached??0;
  $("tick").textContent=Number(s.tick||0).toLocaleString();$("tickHero").textContent="TICK "+String(s.tick||0).padStart(6,"0");
  $("gridLabel").textContent=(s.grid_size||96)+" × "+(s.grid_size||96);$("scenario").textContent=s.scenario||"mixed";

@@ -21,5 +21,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Smoke test offline benchmark CLI
         run: python experiments.py --scenario mixed --seeds 1 --ticks 10 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-smoke.csv && test -s /tmp/ea-life-smoke.csv
+      - name: Smoke test four-condition research ablation
+        run: python experiments.py --ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-ablation.csv && test "$(wc -l < /tmp/ea-life-ablation.csv)" -eq 5
       - name: Validate Compose
         run: docker compose config -q
