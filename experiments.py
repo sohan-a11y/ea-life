@@ -59,9 +59,9 @@ def run():
                            latent_model_enabled,imagination_enabled,horizon)
                           for name,latent_model_enabled,imagination_enabled,horizon in latent_conditions)
     elif args.ablation_suite:
-        ablations = tuple((name,world_model_enabled,collective_enabled,
-                           not args.disable_latent_model,not args.disable_imagination,
-                           args.imagination_horizon)
+        # Preserve the v3 protocol: neural latent learning and imagination are off
+        # in all four conditions, so this suite isolates the original v3 pathways.
+        ablations = tuple((name,world_model_enabled,collective_enabled,False,False,1)
                           for name,world_model_enabled,collective_enabled in
                           (("baseline",False,False),("predictive_only",True,False),
                            ("collective_only",False,True),("full",True,True)))
