@@ -17,10 +17,10 @@ The broker’s destination allowlist is enforced in application code, not by a h
 
 1. Open this repository and select Code → Codespaces → Create codespace.
 2. The dev container includes Docker-in-Docker and forwards port 8000 as Private.
-3. In the Codespaces terminal, run:
+3. After the Codespace initializes, its post-create command builds and starts the services automatically. The forwarded dashboard port should open in the browser. If it does not, run this in the terminal:
 
    ~~~bash
-   docker compose up --build
+   docker compose up --build -d
    ~~~
 
 4. Open forwarded port 8000 labelled EA-Life visual dashboard. Keep it private because it includes simulation controls.
