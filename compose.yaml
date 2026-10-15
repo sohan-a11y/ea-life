@@ -1,0 +1,80 @@
+services:
+  life:
+    build: {context: ., dockerfile: Dockerfile.life}
+    container_name: ea-life-sandbox
+    user: "10001:10001"
+    command: ["python", "-u", "/app/life.py"]
+    network_mode: "none"
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m,uid=10001,gid=10001"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    restart: "no"
+    environment:
+      SIM_TICKS: "100000"
+      TICK_SLEEP: "0.05"
+      STATE_DIR: /state
+      REQUEST_DIR: /exchange/requests
+      RESULT_DIR: /exchange/results
+      CONTROL_DIR: /control
+      RESUME: "0"
+    volumes:
+      - life_state:/state
+      - request_queue:/exchange/requests
+      - result_inbox:/exchange/results:ro
+      - control_queue:/control
+  dashboard:
+    build: {context: ., dockerfile: Dockerfile.dashboard}
+    container_name: ea-life-dashboard
+    user: "10001:10001"
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=8m,uid=10001,gid=10001"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 96m
+    cpus: 0.25
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      STATE_DIR: /state
+      CONTROL_DIR: /control
+      DASHBOARD_PORT: "8000"
+    volumes:
+      - life_state:/state:ro
+      - control_queue:/control
+    networks: [dashboard_net]
+  broker:
+    build: {context: ., dockerfile: Dockerfile.broker}
+    container_name: ea-life-readonly-broker
+    user: "10001:10001"
+    command: ["python", "-u", "/app/broker.py"]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=8m,uid=10001,gid=10001"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+    environment:
+      REQUEST_DIR: /exchange/requests
+      RESULT_DIR: /exchange/results
+      BROKER_MAX_REQUESTS: "100"
+      BROKER_MIN_INTERVAL: "2.0"
+      BROKER_POLL_SECONDS: "0.5"
+    volumes:
+      - request_queue:/exchange/requests:ro
+      - result_inbox:/exchange/results
+    # No listener/port. Application allowlisting is not a host egress firewall.
+volumes:
+  life_state:
+  request_queue:
+  result_inbox:
+  control_queue:
+networks:
+  dashboard_net:
+    internal: true
