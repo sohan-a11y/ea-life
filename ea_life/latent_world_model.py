@@ -209,7 +209,6 @@ class NeuralLatentWorldModel:
         self._train_sample(sample)
         if len(self.replay) > 1:
             self._train_sample(self.rng.choice(self.replay))
-        self.training_updates += 1
 
     @property
     def ready(self) -> bool:
