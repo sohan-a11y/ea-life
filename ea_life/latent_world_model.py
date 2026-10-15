@@ -216,7 +216,8 @@ class NeuralLatentWorldModel:
         return self.transitions_seen >= WARMUP_TRANSITIONS and self.training_updates >= WARMUP_TRANSITIONS
 
     def imagine(self, observation: Sequence[float], horizon: int = 4,
-                beam_width: int = 3, gamma: float = 0.9) -> dict[str, Any] | None:
+                beam_width: int = 3, gamma: float = 0.9,
+                legal_first_actions: Sequence[int] | None = None) -> dict[str, Any] | None:
         """Beam-search action sequences in latent space and return the best first action."""
         if not self.ready:
             return None
@@ -225,6 +226,9 @@ class NeuralLatentWorldModel:
         if not 1 <= beam_width <= 8:
             raise ValueError("imagination beam width must be between 1 and 8")
         initial = self.encode(observation)
+        first_actions = list(range(ACTION_COUNT)) if legal_first_actions is None else sorted(set(int(a) for a in legal_first_actions))
+        if not first_actions or any(a < 0 or a >= ACTION_COUNT for a in first_actions):
+            raise ValueError("legal first actions must contain valid action indices")
         # Node tuple: latent state, discounted score, first real action, imagined path.
         beam: list[tuple[list[float], float, int | None, tuple[int, ...]]] = [
             (initial, 0.0, None, ())
@@ -234,7 +238,8 @@ class NeuralLatentWorldModel:
         for depth in range(horizon):
             candidates: list[tuple[list[float], float, int | None, tuple[int, ...]]] = []
             for latent, total, first_action, path in beam:
-                for action in range(ACTION_COUNT):
+                actions = first_actions if depth == 0 else range(ACTION_COUNT)
+                for action in actions:
                     next_latent, reward = self.predict(latent, action)
                     evaluated += 1
                     first = action if first_action is None else first_action
