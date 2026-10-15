@@ -56,7 +56,7 @@ class EngineTests(unittest.TestCase):
     def test_public_snapshot_hides_private_internal_state(self):
         sim = Simulation(Config(grid_size=48, initial_population=4, max_population=8), seed=8)
         snap = sim.public_snapshot()
-        self.assertEqual(snap["schema_version"], 3)
+        self.assertEqual(snap["schema_version"], 4)
         self.assertIn("resource_trails", snap)
         self.assertIn("danger_trails", snap)
         self.assertEqual(len(snap["resources"]), 48)
