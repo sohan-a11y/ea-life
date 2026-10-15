@@ -42,6 +42,7 @@ class Config:
     max_population: int = 40
     max_total_organisms: int = 500
     scenario: str = "mixed"
+    evolution_enabled: bool = True
     max_age: int = 2600
     max_q_states: int = 512
     max_memory: int = 32
@@ -61,6 +62,7 @@ def config_from_env() -> Config:
         max_population=int(os.environ.get("SIM_MAX_POPULATION","40")),
         max_total_organisms=int(os.environ.get("SIM_MAX_ORGANISMS","500")),
         scenario=os.environ.get("SIM_SCENARIO","mixed"),
+        evolution_enabled=os.environ.get("SIM_EVOLUTION_ENABLED","1") != "0",
         max_age=int(os.environ.get("SIM_MAX_AGE","2600")),
     )
 
@@ -342,7 +344,8 @@ class Simulation:
             if value<.09: self.resources[i]=min(.09,value+.0025)
         for i,value in enumerate(self.hazards):
             if value>.01: self.hazards[i]=max(0.0,value-.00025)
-        self._reproduce()
+        if self.config.evolution_enabled:
+            self._reproduce()
         self.tick+=1
 
     def _reproduce(self):
@@ -412,10 +415,11 @@ class Simulation:
                 "beacons":self.beacons,"agents":self.agents,"rng_state":self.rng.getstate()}
 
     def load_state_dict(self,state:dict[str,Any]):
-        if int(state.get("config",{}).get("grid_size",-1))!=self.config.grid_size:
-            raise ValueError("checkpoint grid size does not match current configuration")
-        if state.get("config",{}).get("scenario")!=self.config.scenario:
-            raise ValueError("checkpoint scenario does not match current configuration")
+        saved_config = state.get("config", {})
+        current_config = asdict(self.config)
+        mismatches = [key for key, value in current_config.items() if saved_config.get(key) != value]
+        if mismatches:
+            raise ValueError("checkpoint configuration mismatch: " + ", ".join(mismatches))
         for key in ("tick","total_created","total_births","total_deaths","goal_events","next_id",
                     "event_seq","events","resources","hazards","global_visits","beacons","agents"):
             if key in state: setattr(self,key,state[key])

@@ -18,6 +18,7 @@ services:
       SIM_MAX_POPULATION: "40"
       SIM_MAX_ORGANISMS: "500"
       SIM_SCENARIO: "mixed"
+      SIM_EVOLUTION_ENABLED: "1"
       SIM_TICKS: "100000"
       TICK_SLEEP: "0.04"
       SAVE_EVERY: "10"

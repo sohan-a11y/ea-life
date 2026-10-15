@@ -6,3 +6,5 @@ __pycache__/
 *.log
 state/
 exchange/
+experiment-results*.csv
+no-evolution*.csv
