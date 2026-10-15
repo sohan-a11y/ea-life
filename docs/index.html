@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1016">
+<meta name="description" content="EA-Life browser simulation: curiosity, adaptation, resource seeking and digital organism reproduction.">
+<title>EA-Life — Browser Simulation</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="EA-Life home"><span class="mark">E</span><span><small>ARTIFICIAL LIFE / EXPERIMENT</small><strong>EA-Life <em>Browser Lab</em></strong></span></a>
+    <div class="status"><i id="statusDot"></i><span id="statusText">Initializing simulation</span><b>BROWSER RUN</b></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><div class="eyebrow">LIVE EXPERIMENT · CLIENT-SIDE DEMO</div><h1>Four origins.<br><em>One evolving world.</em></h1><p>Watch digital organisms search for resources, react to novelty, learn from prediction errors, and reproduce with mutated traits. Everything runs locally in this browser tab.</p><div class="hero-actions"><button id="pauseBtn" class="primary">Ⅱ Pause</button><button id="resetBtn" class="secondary">↻ Reset experiment</button></div></div>
+      <div class="orbit-art" aria-hidden="true"><div class="orbit o1"></div><div class="orbit o2"></div><div class="planet"></div><i class="orb-dot a"></i><i class="orb-dot b"></i><i class="orb-dot c"></i><div class="orb-caption"><strong id="tickHero">TICK 000000</strong><span>128 × 128 RESOURCE WORLD</span></div></div>
+    </section>
+    <section class="metrics">
+      <article><label>ALIVE NOW</label><strong id="alive">4</strong><small>Population currently living</small><div class="bar"><i id="aliveBar"></i></div></article>
+      <article><label>OFFSPRING BORN</label><strong id="births">0</strong><small>Inheritance with mutation</small><div class="bar mint"><i id="birthBar"></i></div></article>
+      <article><label>MAX GENERATION</label><strong id="generation">0</strong><small>Deepest lineage found</small><div class="bar violet"><i id="genBar"></i></div></article>
+      <article><label>MEAN CURIOSITY</label><strong id="curiosity">—</strong><small>Engineered motivation signal</small><div class="bar amber"><i id="curiosityBar"></i></div></article>
+    </section>
+    <section class="main-grid">
+      <article class="panel world-panel">
+        <div class="panel-title"><div><label>ENVIRONMENT / 01</label><h2>Resource world</h2></div><span class="live">● LIVE</span></div>
+        <canvas id="world" width="512" height="512" aria-label="Animated world with resource patches and organisms"></canvas>
+        <div class="legend"><span><i class="swatch food"></i>Resource field</span><span><i class="swatch org"></i>Organism</span><span><i class="swatch elder"></i>Later generation</span><span class="legend-note">Updates every simulation tick</span></div>
+        <div class="world-stats"><div><label>TICK</label><strong id="tick">0</strong></div><div><label>MEAN ENERGY</label><strong id="energy">—</strong></div><div><label>PREDICTION ERROR</label><strong id="error">—</strong></div><div><label>KNOWN TOPICS</label><strong id="topics">0</strong></div></div>
+      </article>
+      <aside class="panel">
+        <div class="panel-title"><div><label>BEHAVIOR / 02</label><h2>Curiosity & learning</h2></div><span class="tag">LOCAL</span></div>
+        <div class="signal"><span class="signal-icon">◎</span><div><label>MEAN CURIOSITY</label><strong id="curiositySmall">—</strong></div><div class="gauge"><i id="curiosityGauge"></i></div></div>
+        <div class="signal"><span class="signal-icon violet-icon">↗</span><div><label>LEARNING PROGRESS</label><strong id="learning">—</strong></div></div>
+        <div class="signal"><span class="signal-icon amber-icon">⌁</span><div><label>RESOURCE COVERAGE</label><strong id="resourceCoverage">—</strong></div></div>
+        <hr>
+        <div class="eyebrow">HOW THIS DEMO WORKS</div>
+        <p class="note">Each organism has mutable preference weights, a small action-value table, energy and a novelty record. Reproduction happens under explicit simulation rules. “Research topics” are built-in local labels, not internet searches.</p>
+        <div class="privacy"><span>◆</span><span>No backend, account tokens, third-party API calls, or network requests are used by this demo.</span></div>
+      </aside>
+    </section>
+    <section class="bottom-grid">
+      <article class="panel"><div class="panel-title"><div><label>POPULATION / 03</label><h2>Experiment history</h2></div><span class="tag">LAST 60 SAMPLES</span></div><canvas id="chart" width="720" height="190" aria-label="Population history chart"></canvas><div class="chart-legend"><span><i class="line-blue"></i>Living population</span><span><i class="line-mint"></i>Cumulative births</span></div></article>
+      <article class="panel"><div class="panel-title"><div><label>TRACE / 04</label><h2>Recent events</h2></div><span class="tag">LOCAL LOG</span></div><div id="events" class="events" aria-live="polite"></div></article>
+    </section>
+    <section class="panel registry"><div class="panel-title"><div><label>LINEAGES / 05</label><h2>Organism registry</h2></div><span id="registryCount" class="tag">4 ORGANISMS</span></div><div class="table-wrap"><table><thead><tr><th>ORGANISM</th><th>GEN.</th><th>ENERGY</th><th>CURIOSITY</th><th>AGE</th><th>OFFSPRING</th><th>LOCAL TOPICS</th><th>STATUS</th></tr></thead><tbody id="registry"></tbody></table></div></section>
+    <section class="footnote"><strong>Research note</strong><p>This GitHub Pages version is a self-contained browser simulation for quick visual access. It is not the Python/Docker sandbox and does not use live web research. For the isolated Python experiment and broker, use the source code in the private repository.</p><a href="https://github.com/sohan-a11y/ea-life">View source repository ↗</a></section>
+  </main>
+  <footer><span>EA-LIFE / ARTIFICIAL-LIFE RESEARCH PROTOTYPE</span><span>SIMULATION RUNS WHILE THIS PAGE IS OPEN</span></footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
