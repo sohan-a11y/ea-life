@@ -478,8 +478,8 @@ class Simulation:
         wm_surprise=sum(float(a.get("world_model_surprise_sum",0.0)) for a in self.agents)
         wm_surprise_count=sum(int(a.get("world_model_surprise_count",0)) for a in self.agents)
         area=max(1,len(self.resources))
-        trail_coverage=sum(1 for value in self.resource_trails if value>.04)/area
-        danger_coverage=sum(1 for value in self.danger_trails if value>.04)/area
+        trail_coverage=sum(1 for i in range(area)
+                             if self.resource_trails[i]>.04 or self.danger_trails[i]>.04)/area
         return {
             "alive":len(living),"total_created":self.total_created,"births":self.total_births,
             "deaths":self.total_deaths,"max_generation":max((a["generation"] for a in self.agents),default=0),
@@ -495,7 +495,7 @@ class Simulation:
             "world_model_surprise":round(wm_surprise/max(1,wm_surprise_count),4),
             "resource_trail_mass":round(sum(self.resource_trails)/area,4),
             "danger_trail_mass":round(sum(self.danger_trails)/area,4),
-            "collective_signal_coverage":round(min(1.0,trail_coverage+danger_coverage),4),
+            "collective_signal_coverage":round(trail_coverage,4),
         }
 
     def public_snapshot(self)->dict[str,Any]:
