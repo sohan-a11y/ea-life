@@ -24,6 +24,7 @@ GENE_BOUNDS = {
     "goal_drive":(0.0,3.5), "risk_aversion":(0.1,4.0), "crowd_penalty":(0.0,2.0),
     "learning_rate":(0.02,0.35), "discount":(0.5,0.98), "curiosity_bias":(-2.0,1.2),
     "reproduction_threshold":(52.0,88.0), "mutation_scale":(0.025,0.25), "value_weight":(0.1,2.0),
+    "predictive_drive":(0.0,2.2), "collective_drive":(0.0,2.5), "signal_aversion":(0.0,2.5),
 }
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -47,12 +48,16 @@ class Config:
     max_q_states: int = 512
     max_memory: int = 32
     max_semantic_terms: int = 128
+    max_world_model_states: int = 256
+    world_model_enabled: bool = True
+    collective_enabled: bool = True
     def __post_init__(self):
         if not 32 <= self.grid_size <= 192: raise ValueError("grid_size must be between 32 and 192")
         if not 1 <= self.initial_population <= self.max_population <= 128: raise ValueError("population bounds are invalid")
         if self.max_total_organisms < self.initial_population: raise ValueError("total organism cap is below starting population")
         if self.scenario not in SCENARIOS: raise ValueError("unknown scenario")
         if self.max_q_states < 16 or self.max_memory < 4: raise ValueError("memory bounds are too small")
+        if not 16 <= self.max_world_model_states <= 2048: raise ValueError("world-model bound must be between 16 and 2048")
 
 def config_from_env() -> Config:
     import os
@@ -64,6 +69,8 @@ def config_from_env() -> Config:
         scenario=os.environ.get("SIM_SCENARIO","mixed"),
         evolution_enabled=os.environ.get("SIM_EVOLUTION_ENABLED","1") != "0",
         max_age=int(os.environ.get("SIM_MAX_AGE","2600")),
+        world_model_enabled=os.environ.get("SIM_WORLD_MODEL_ENABLED","1") != "0",
+        collective_enabled=os.environ.get("SIM_COLLECTIVE_ENABLED","1") != "0",
     )
 
 def new_genome(rng: random.Random) -> dict[str,float]:
@@ -74,6 +81,8 @@ def new_genome(rng: random.Random) -> dict[str,float]:
         "learning_rate":rng.uniform(.06,.20), "discount":rng.uniform(.75,.94),
         "curiosity_bias":rng.uniform(-.9,-.15), "reproduction_threshold":rng.uniform(60,78),
         "mutation_scale":rng.uniform(.06,.15), "value_weight":rng.uniform(.4,1.1),
+        "predictive_drive":rng.uniform(.35,1.35), "collective_drive":rng.uniform(.3,1.5),
+        "signal_aversion":rng.uniform(.4,1.7),
     }
 
 def mutate_genome(parent: dict[str,float], rng: random.Random) -> dict[str,float]:
@@ -121,6 +130,8 @@ class Simulation:
         self.resources = [self.rng.uniform(.005,.08) for _ in range(n*n)]
         self.hazards = [0.0 for _ in range(n*n)]
         self.global_visits = [0 for _ in range(n*n)]
+        self.resource_trails = [0.0 for _ in range(n*n)]
+        self.danger_trails = [0.0 for _ in range(n*n)]
         centres = [(max(5,n//4),max(5,n//4)),(min(n-6,n*3//4),max(5,n//4)),
                    (max(5,n//4),min(n-6,n*3//4)),(min(n-6,n*3//4),min(n-6,n*3//4)),(n//2,n//2)]
         for cx,cy in centres:
@@ -158,6 +169,9 @@ class Simulation:
             "energy":energy,"age":0,"offspring":0,"alive":True,
             "genome":genome if genome is not None else new_genome(self.rng),
             "visits":{},"q_table":{},"model":[[0,0.0,0.0] for _ in ACTIONS],
+            "world_model":{},"world_model_error_sum":0.0,"world_model_error_count":0,
+            "world_model_next_correct":0,"world_model_prediction_count":0,
+            "world_model_surprise_sum":0.0,"world_model_surprise_count":0,
             "error_ema":.5,"learning_progress":0.0,"curiosity":0.0,"known_topics":[],
             "semantic_terms":dict(list((inherited_terms or {}).items())[:8]),"facts":0,
             "pending_request_id":None,"last_request_tick":-10000,
@@ -202,6 +216,52 @@ class Simulation:
         row=agent["model"][action]; row[0]+=1; delta=reward-row[1]
         row[1]+=delta/row[0]; row[2]+=delta*(reward-row[1])
 
+    def _world_model_key(self,state_key:str,action:int)->str:
+        return state_key+"|"+str(action)
+
+    def _world_model_stats(self,agent:dict[str,Any],state_key:str,action:int)->tuple[float,float,float]:
+        """Return predicted immediate reward, confidence, and normalized uncertainty."""
+        row=agent.get("world_model",{}).get(self._world_model_key(state_key,action))
+        if not row:
+            return 0.0,0.0,1.0
+        count=int(row.get("count",0))
+        variance=max(0.0,float(row.get("reward_m2",0.0))/(count-1)) if count>1 else 1.0
+        uncertainty=min(1.0,1.0/math.sqrt(count+1)+min(.35,math.sqrt(variance)/12.0))
+        return float(row.get("reward_mean",0.0)),count/(count+3.0),uncertainty
+
+    def _update_world_model(self,agent:dict[str,Any],state_key:str,action:int,
+                            next_state_key:str,reward:float):
+        """Online bounded transition model: state/action -> next-state counts and reward moments."""
+        world=agent.setdefault("world_model",{})
+        key=self._world_model_key(state_key,action)
+        if key not in world:
+            if len(world)>=self.config.max_world_model_states:
+                world.pop(next(iter(world)))
+            world[key]={"count":0,"next_counts":{},"reward_mean":0.0,"reward_m2":0.0}
+        row=world[key]
+        count=int(row["count"])
+        next_counts=row["next_counts"]
+        if count:
+            agent["world_model_error_sum"]+=abs(reward-float(row["reward_mean"]))
+            agent["world_model_error_count"]+=1
+            if next_counts:
+                predicted=max(next_counts.items(),key=lambda item:item[1])[0]
+                agent["world_model_next_correct"]+=int(predicted==next_state_key)
+                agent["world_model_prediction_count"]+=1
+            probability=(int(next_counts.get(next_state_key,0))+1)/(count+len(next_counts)+1)
+            surprise=min(1.0,-math.log(probability)/math.log(max(2,count+len(next_counts)+1)))
+            agent["world_model_surprise_sum"]+=surprise
+            agent["world_model_surprise_count"]+=1
+        next_counts[next_state_key]=int(next_counts.get(next_state_key,0))+1
+        if len(next_counts)>24:
+            drop=min((candidate for candidate in next_counts if candidate!=next_state_key),
+                     key=lambda candidate:next_counts[candidate])
+            del next_counts[drop]
+        delta=reward-float(row["reward_mean"])
+        row["reward_mean"]=float(row["reward_mean"])+delta/(count+1)
+        row["reward_m2"]=float(row["reward_m2"])+delta*(reward-float(row["reward_mean"]))
+        row["count"]=count+1
+
     def _role_weights(self,agent:dict[str,Any])->dict[str,float]:
         g=agent["genome"]; w={"food":g["food_drive"],"novelty":g["novelty_drive"],
                                "goal":g["goal_drive"],"risk":g["risk_aversion"]}
@@ -226,10 +286,17 @@ class Simulation:
             crowd=1.0 if idx in occupied and idx!=current else 0.0
             progress=(current_dist-self._distance(nx,ny,target))/max(1,n//2)
             _,uncertainty=self._model_stats(agent,action)
+            predicted_reward,confidence,world_uncertainty=self._world_model_stats(agent,key,action)
+            resource_trail=(self._resource_trail_view[idx] if self.config.collective_enabled else 0.0)
+            danger_trail=(self._danger_trail_view[idx] if self.config.collective_enabled else 0.0)
+            collective=(g.get("collective_drive",0.0)*resource_trail
+                        -g.get("signal_aversion",0.0)*danger_trail)
+            predictive=(g.get("predictive_drive",0.0)*confidence*clamp(predicted_reward/4.0,-1.0,1.0)
+                        +g["uncertainty_drive"]*world_uncertainty*.12)
             score=(weights["food"]*resource+weights["novelty"]*novelty+weights["goal"]*progress
                    -weights["risk"]*hazard-g["crowd_penalty"]*crowd
                    +g["value_weight"]*q[action]+g["uncertainty_drive"]*uncertainty
-                   +self.rng.uniform(-.035,.035))
+                   +collective+predictive+self.rng.uniform(-.035,.035))
             candidates.append((score,action,novelty,uncertainty))
         if not candidates: raise RuntimeError("organism has no legal actions")
         epsilon=.035+.18*novelty_now*clamp(g["novelty_drive"]/3.5)
@@ -277,6 +344,9 @@ class Simulation:
     def step(self):
         n=self.config.grid_size
         living_start=[a for a in self.agents if a["alive"]]
+        # Every organism observes the same pre-tick signal fields; deposits take effect next tick.
+        self._resource_trail_view=self.resource_trails.copy()
+        self._danger_trail_view=self.danger_trails.copy()
         occupied={self._idx(a["x"],a["y"]) for a in living_start}
         for agent in living_start:
             if not agent["alive"]: continue
@@ -296,6 +366,11 @@ class Simulation:
                 else:
                     new_idx=old_idx; nx,ny=x0,y0; occupied.add(old_idx)
             resource=self.resources[new_idx]; hazard=self.hazards[new_idx]
+            if self.config.collective_enabled:
+                if resource>=.18:
+                    self.resource_trails[new_idx]=min(1.0,self.resource_trails[new_idx]+resource*.24)
+                if hazard>=.04:
+                    self.danger_trails[new_idx]=min(1.0,self.danger_trails[new_idx]+hazard*.32)
             old_dist=self._distance(x0,y0,self._goal(agent)); new_dist=self._distance(nx,ny,self._goal(agent))
             progress=(old_dist-new_dist)/max(1,n//2); task=self._task(agent)
             food_reward=resource*2.4
@@ -322,6 +397,8 @@ class Simulation:
             td_error=target-previous_q[action]
             self._q_values(agent,state_key)[action]+=agent["genome"]["learning_rate"]*td_error
             self._update_model(agent,action,reward)
+            if self.config.world_model_enabled:
+                self._update_world_model(agent,state_key,action,new_key,reward)
             old_ema=agent["error_ema"]; normalized=min(3.0,abs(td_error)/4.0)
             agent["error_ema"]=.92*old_ema+.08*normalized
             agent["learning_progress"]=clamp(max(0.0,old_ema-agent["error_ema"])*3.5)
@@ -342,8 +419,14 @@ class Simulation:
                             {"organism_id":agent["id"],"age":agent["age"],"generation":agent["generation"]})
         for i,value in enumerate(self.resources):
             if value<.09: self.resources[i]=min(.09,value+.0025)
+            if self.config.collective_enabled:
+                self.resource_trails[i]*=.985
+                if self.resource_trails[i]<.001: self.resource_trails[i]=0.0
         for i,value in enumerate(self.hazards):
             if value>.01: self.hazards[i]=max(0.0,value-.00025)
+            if self.config.collective_enabled:
+                self.danger_trails[i]*=.96
+                if self.danger_trails[i]<.001: self.danger_trails[i]=0.0
         if self.config.evolution_enabled:
             self._reproduce()
         self.tick+=1
@@ -386,6 +469,16 @@ class Simulation:
                            for k in genes)/len(genes) for a,b in pairs)/len(pairs)) if pairs else 0.0
         roles={role:sum(1 for a in living if self._task(a)==role) for role in ROLES}
         coverage=sum(1 for v in self.resources if v>.15)/max(1,len(self.resources))
+        wm_entries=sum(len(a.get("world_model",{})) for a in self.agents)
+        wm_error=sum(float(a.get("world_model_error_sum",0.0)) for a in self.agents)
+        wm_error_count=sum(int(a.get("world_model_error_count",0)) for a in self.agents)
+        wm_correct=sum(int(a.get("world_model_next_correct",0)) for a in self.agents)
+        wm_predictions=sum(int(a.get("world_model_prediction_count",0)) for a in self.agents)
+        wm_surprise=sum(float(a.get("world_model_surprise_sum",0.0)) for a in self.agents)
+        wm_surprise_count=sum(int(a.get("world_model_surprise_count",0)) for a in self.agents)
+        area=max(1,len(self.resources))
+        trail_coverage=sum(1 for value in self.resource_trails if value>.04)/area
+        danger_coverage=sum(1 for value in self.danger_trails if value>.04)/area
         return {
             "alive":len(living),"total_created":self.total_created,"births":self.total_births,
             "deaths":self.total_deaths,"max_generation":max((a["generation"] for a in self.agents),default=0),
@@ -394,6 +487,14 @@ class Simulation:
             "genomic_diversity":round(diversity,4),"goals_reached":self.goal_events,
             "research_topics_known":sum(len(a["known_topics"]) for a in self.agents),
             "resource_coverage":round(coverage,4),"roles":roles,
+            "world_model_entries":wm_entries,
+            "world_model_reward_mae":round(wm_error/max(1,wm_error_count),4),
+            "world_model_next_state_accuracy":round(wm_correct/max(1,wm_predictions),4),
+            "world_model_predictions":wm_predictions,
+            "world_model_surprise":round(wm_surprise/max(1,wm_surprise_count),4),
+            "resource_trail_mass":round(sum(self.resource_trails)/area,4),
+            "danger_trail_mass":round(sum(self.danger_trails)/area,4),
+            "collective_signal_coverage":round(min(1.0,trail_coverage+danger_coverage),4),
         }
 
     def public_snapshot(self)->dict[str,Any]:
@@ -401,10 +502,12 @@ class Simulation:
         keys=("id","parent_id","generation","role","x","y","energy","age","offspring","alive",
               "curiosity","learning_progress","error_ema","known_topics","facts","goals_reached","last_action")
         agents=[{k:a[k] for k in keys} for a in self.agents]
-        return {"schema_version":2,"tick":self.tick,"saved_at":time.time(),"grid_size":n,
+        return {"schema_version":3,"tick":self.tick,"saved_at":time.time(),"grid_size":n,
                 "scenario":self.config.scenario,
                 "resources":[[round(self.resources[y*n+x],3) for x in range(n)] for y in range(n)],
                 "hazards":[[round(self.hazards[y*n+x],3) for x in range(n)] for y in range(n)],
+                "resource_trails":[[round(self.resource_trails[y*n+x],3) for x in range(n)] for y in range(n)],
+                "danger_trails":[[round(self.danger_trails[y*n+x],3) for x in range(n)] for y in range(n)],
                 "beacons":self.beacons,"agents":agents,"metrics":self.metrics(),"recent_events":self.events[-30:]}
 
     def state_dict(self)->dict[str,Any]:
@@ -412,6 +515,7 @@ class Simulation:
                 "total_births":self.total_births,"total_deaths":self.total_deaths,"goal_events":self.goal_events,
                 "next_id":self.next_id,"event_seq":self.event_seq,"events":self.events[-120:],
                 "resources":self.resources,"hazards":self.hazards,"global_visits":self.global_visits,
+                "resource_trails":self.resource_trails,"danger_trails":self.danger_trails,
                 "beacons":self.beacons,"agents":self.agents,"rng_state":self.rng.getstate()}
 
     def load_state_dict(self,state:dict[str,Any]):
@@ -421,7 +525,8 @@ class Simulation:
         if mismatches:
             raise ValueError("checkpoint configuration mismatch: " + ", ".join(mismatches))
         for key in ("tick","total_created","total_births","total_deaths","goal_events","next_id",
-                    "event_seq","events","resources","hazards","global_visits","beacons","agents"):
+                    "event_seq","events","resources","hazards","global_visits","resource_trails","danger_trails",
+                    "beacons","agents"):
             if key in state: setattr(self,key,state[key])
         self.rng.setstate(tupleify(state["rng_state"]))
 
