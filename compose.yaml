@@ -71,7 +71,7 @@ services:
       BROKER_MIN_INTERVAL: "1.5"
       BROKER_POLL_SECONDS: "0.5"
     volumes:
-      - request_queue:/exchange/requests:ro
+      - request_queue:/exchange/requests
       - result_inbox:/exchange/results
     # No listener or published port. Destination enforcement is application-level.
 volumes:

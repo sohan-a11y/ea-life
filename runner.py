@@ -71,7 +71,7 @@ def main():
             new_events=[e for e in sim.events if e["seq"]>saved_event_seq]
             if new_events:
                 with (STATE_DIR/"events.jsonl").open("a",encoding="utf-8") as stream:
-                    for event in new_events: stream.write(json.dumps(event,separators=(",",":"))+"\\n")
+                    for event in new_events: stream.write(json.dumps(event,separators=(",",":"))+"\n")
                 saved_event_seq=max(e["seq"] for e in new_events)
             if sim.tick%100==0:
                 print("[tick %d] alive=%d births=%d curiosity=%.3f diversity=%.3f"%(
