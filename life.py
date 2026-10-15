@@ -150,6 +150,8 @@ def main() -> None:
         for a in living:
             absorb_result(a,tick); x,y=a["x"],a["y"]; key=str(x)+","+str(y)
             prior=a["visits"].get(key,0); novelty=1.0/math.sqrt(1+prior); a["visits"][key]=prior+1
+            if len(a["visits"]) > 512:
+                a["visits"].pop(next(iter(a["visits"])))
             candidates=[]
             for idx,(dx,dy) in enumerate(ACTIONS):
                 nx,ny=x+dx,y+dy
@@ -177,7 +179,13 @@ def main() -> None:
             a["energy"]=clamp(a["energy"]+resource*3.0-0.45-(0.18 if (dx or dy) else 0.0),0,100)
             world[a["y"]][a["x"]]=max(0.0,resource-0.06); a["age"]+=1
             request_topic(a,tick,a["last_curiosity"],rng)
-            if a["energy"]<=0.01 or a["age"]>4000: a["alive"]=False
+            if a["energy"]<=0.01 or a["age"]>4000:
+                a["alive"]=False
+                a["visits"].clear()
+                a["known_terms"].clear()
+                a["q"]=[0.0 for _ in ACTIONS]
+                a["counts"]=[0 for _ in ACTIONS]
+                a["pending_request_id"]=None
         for row in world:
             for i,value in enumerate(row):
                 if value<0.10: row[i]=min(0.10,value+0.002)
