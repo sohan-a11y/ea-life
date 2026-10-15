@@ -82,6 +82,28 @@ class EngineTests(unittest.TestCase):
         forage = Simulation(Config(grid_size=48, initial_population=4, max_population=8, scenario="avoid_hazards"), seed=9)
         self.assertTrue(all(forage._task(a) == "avoider" for a in forage.agents))
 
+    def test_evolution_can_be_disabled(self):
+        cfg = Config(grid_size=48, initial_population=4, max_population=8,
+                     evolution_enabled=False)
+        sim = Simulation(cfg, seed=22)
+        for agent in sim.agents:
+            agent["energy"] = 100.0
+            agent["genome"]["reproduction_threshold"] = 50.0
+            agent["last_birth_tick"] = -1000
+        sim.step()
+        self.assertEqual(len(sim.agents), 4)
+        self.assertEqual(sim.total_births, 0)
+
+    def test_checkpoint_rejects_incompatible_config(self):
+        first = Simulation(Config(grid_size=48, initial_population=4, max_population=8), seed=5)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "checkpoint.json"
+            first.save_checkpoint(path)
+            data = json.loads(path.read_text())
+            incompatible = Simulation(Config(grid_size=48, initial_population=4, max_population=9), seed=5)
+            with self.assertRaises(ValueError):
+                incompatible.load_state_dict(data)
+
     def test_action_space_has_stay_and_eight_moves(self):
         self.assertEqual(len(ACTIONS), 9)
         self.assertIn((0, 0), ACTIONS)

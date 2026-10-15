@@ -42,6 +42,17 @@ python experiments.py --scenario mixed --disable-evolution --seeds 3 --ticks 600
 
 The runner prints one summary row per scenario/seed and writes CSV files for analysis. It uses the same simulation engine with the external research broker disabled, so benchmark runs are offline and reproducible from the recorded seed. This is a small experiment harness, not a statistical claim: use more seeds and confidence intervals before concluding that a behavior or genome is superior.
 
+## Repeatable offline experiment suite
+
+Run matched seeds across scenarios, then compare with a no-reproduction baseline:
+
+~~~bash
+python experiments.py --all-scenarios --seeds 3 --ticks 600 --grid-size 48 --output experiment-results.csv
+python experiments.py --scenario mixed --disable-evolution --seeds 3 --ticks 600 --grid-size 48 --output no-evolution.csv
+~~~
+
+The CLI prints one summary row per scenario and seed and writes CSV for analysis. It uses the simulation engine with the research broker disabled, so benchmark runs are offline and repeatable from the seed. This is a small experiment harness, not a statistical conclusion: use more seeds and uncertainty intervals before claiming that one policy is superior.
+
 ## Run in Codespaces
 
 1. Create a Codespace from this repository's default branch.
