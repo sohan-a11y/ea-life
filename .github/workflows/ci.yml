@@ -29,13 +29,18 @@ jobs:
         run: |
           docker compose -f compose.yaml -f compose.ci.yaml up --build -d
           trap 'docker compose -f compose.yaml -f compose.ci.yaml down -v' EXIT
+          port="$(docker compose -f compose.yaml -f compose.ci.yaml port dashboard 8000)"
+          printf 'Dashboard port binding: %s\n' "$port"
+          case "$port" in
+            127.0.0.1:*) ;;
+            *) echo "Dashboard must bind to loopback only"; exit 1 ;;
+          esac
           for attempt in $(seq 1 30); do
-            if curl -fsS --max-time 2 http://127.0.0.1:8000/api/state -o /tmp/ea-life-state.json; then
-              if python -c 'import json; s=json.load(open("/tmp/ea-life-state.json")); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
-                exit 0
-              fi
+            if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import json,urllib.request; s=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/state",timeout=2)); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+              exit 0
             fi
             sleep 1
           done
+          docker compose -f compose.yaml -f compose.ci.yaml ps -a
           docker compose -f compose.yaml -f compose.ci.yaml logs --no-color
           exit 1
