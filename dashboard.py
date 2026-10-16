@@ -44,7 +44,7 @@ def build_state()->dict:
       "summary":summary}
 
 class Handler(BaseHTTPRequestHandler):
-    server_version="EA-Life-Dashboard/2.0"
+    server_version="EA-Life-Dashboard"
     def _send(self,status:int,content_type:str,body:bytes):
         self.send_response(status); self.send_header("Content-Type",content_type)
         self.send_header("Content-Length",str(len(body))); self.send_header("X-Content-Type-Options","nosniff")
@@ -86,5 +86,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=="__main__":
     CONTROL_DIR.mkdir(parents=True,exist_ok=True)
-    print("EA-Life v2 dashboard on port",PORT,flush=True)
+    print("EA-Life dashboard on port",PORT,flush=True)
     ThreadingHTTPServer(("0.0.0.0",PORT),Handler).serve_forever()

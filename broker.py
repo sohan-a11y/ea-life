@@ -37,7 +37,7 @@ def retrieve(topic_id:str)->list[dict]:
     query=urllib.parse.urlencode({"action":"query","list":"search","srsearch":TOPICS[topic_id],
                                   "format":"json","utf8":"1","srlimit":"3"})
     request=urllib.request.Request(ENDPOINT+"?"+query,
-        headers={"User-Agent":"EA-Life-Research-Broker/2.0 (educational read-only prototype)"},method="GET")
+        headers={"User-Agent":"EA-Life-Research-Broker/1.0 (educational read-only prototype)"},method="GET")
     opener=urllib.request.build_opener(AllowlistedRedirectHandler())
     with opener.open(request,timeout=8) as response:
         if response.status!=200: raise RuntimeError("upstream status was not 200")
