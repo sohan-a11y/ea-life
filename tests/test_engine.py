@@ -8,6 +8,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from ea_life.engine import ACTIONS, Config, GENE_BOUNDS, Simulation, curiosity_score, mutate_genome, new_genome
+from ea_life.latent_world_model import FEATURE_DIM, NeuralLatentWorldModel
 
 
 class EngineTests(unittest.TestCase):
@@ -17,6 +18,10 @@ class EngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Config(scenario="arbitrary_task")
         self.assertEqual(Config().scenario, "mixed")
+        with self.assertRaises(ValueError):
+            Config(imagination_horizon=13)
+        with self.assertRaises(ValueError):
+            Config(imagination_beam_width=9)
 
     def test_world_bounds_hazards_and_beacons(self):
         sim = Simulation(Config(grid_size=48, initial_population=4, max_population=8), seed=4)
@@ -54,7 +59,7 @@ class EngineTests(unittest.TestCase):
     def test_public_snapshot_hides_private_internal_state(self):
         sim = Simulation(Config(grid_size=48, initial_population=4, max_population=8), seed=8)
         snap = sim.public_snapshot()
-        self.assertEqual(snap["schema_version"], 3)
+        self.assertEqual(snap["schema_version"], 4)
         self.assertIn("resource_trails", snap)
         self.assertIn("danger_trails", snap)
         self.assertEqual(len(snap["resources"]), 48)
@@ -152,14 +157,68 @@ class EngineTests(unittest.TestCase):
         snapshot = sim.public_snapshot()
         self.assertEqual(len(snapshot["resource_trails"]), cfg.grid_size)
 
+    def test_neural_latent_model_learns_and_imagines(self):
+        model = NeuralLatentWorldModel(seed=123, replay_capacity=128)
+        for i in range(64):
+            obs = [((i * (j + 3)) % 101) / 100.0 for j in range(FEATURE_DIM)]
+            nxt = [max(0.0, min(1.0, value + (0.02 if j % 2 else -0.015)))
+                   for j, value in enumerate(obs)]
+            model.observe_transition(obs, i % len(ACTIONS), nxt, (i % 7) / 3.0 - 1.0)
+        self.assertTrue(model.ready)
+        self.assertEqual(len(model.encode([0.5] * FEATURE_DIM)), 8)
+        decoded = model.reconstruct([0.5] * FEATURE_DIM)
+        self.assertEqual(len(decoded), FEATURE_DIM)
+        self.assertTrue(all(0.0 <= value <= 1.0 for value in decoded))
+        plan = model.imagine([0.5] * FEATURE_DIM, horizon=4, beam_width=3,
+                             legal_first_actions=[0, 4, 8])
+        self.assertIsNotNone(plan)
+        self.assertIn(plan["action"], [0, 4, 8])
+        self.assertEqual(len(plan["path"]), 4)
+        self.assertGreater(plan["predictions"], 0)
+        self.assertLessEqual(len(model.replay), 128)
+        restored = NeuralLatentWorldModel(seed=999, replay_capacity=128)
+        import copy
+        state = json.loads(json.dumps(model.state_dict()))
+        restored.load_state_dict(state)
+        self.assertEqual(restored.transitions_seen, model.transitions_seen)
+        self.assertEqual(restored.encode([0.2] * FEATURE_DIM), model.encode([0.2] * FEATURE_DIM))
+
+    def test_simulation_trains_latent_model_and_uses_imagination(self):
+        cfg = Config(grid_size=32, initial_population=4, max_population=4,
+                     evolution_enabled=False, imagination_horizon=3,
+                     imagination_beam_width=2)
+        sim = Simulation(cfg, seed=555)
+        for _ in range(20):
+            sim.step()
+        metrics = sim.metrics()
+        self.assertTrue(metrics["latent_model_ready"])
+        self.assertGreater(metrics["latent_transitions_seen"], 48)
+        self.assertGreater(metrics["latent_imagination_calls"], 0)
+        self.assertGreater(metrics["latent_imagination_predictions"], 0)
+        self.assertEqual(metrics["latent_last_plan_horizon"], 3)
+        snapshot = sim.public_snapshot()
+        self.assertEqual(snapshot["schema_version"], 4)
+        self.assertNotIn("latent_world_model", snapshot)
+
+    def test_latent_model_and_imagination_can_be_disabled_separately(self):
+        cfg = Config(grid_size=32, initial_population=4, max_population=4,
+                     evolution_enabled=False, latent_model_enabled=False,
+                     imagination_enabled=False)
+        sim = Simulation(cfg, seed=556)
+        for _ in range(12):
+            sim.step()
+        metrics = sim.metrics()
+        self.assertEqual(metrics["latent_transitions_seen"], 0)
+        self.assertEqual(metrics["latent_imagination_calls"], 0)
+
 
     def test_terminal_transition_does_not_bootstrap_next_q_value(self):
-        cfg = Config(grid_size=48, initial_population=1, max_population=1,
-                     evolution_enabled=False, max_age=1)
+        cfg = Config(grid_size=32, initial_population=1, max_population=1,
+                     evolution_enabled=False, max_age=1, latent_model_enabled=False,
+                     imagination_enabled=False)
         sim = Simulation(cfg, seed=111)
         agent = sim.agents[0]
         agent["energy"] = 100.0
-        # Force a stay action and distinct abstract state keys to isolate the update target.
         original_q_values = sim._q_values
         q_keys = []
         def track_q_values(target_agent, key):
@@ -174,8 +233,9 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("next-state", q_keys)
 
     def test_world_model_surprise_uses_retained_outcome_counts(self):
-        sim = Simulation(Config(grid_size=48, initial_population=1, max_population=1,
-                                evolution_enabled=False), seed=112)
+        sim = Simulation(Config(grid_size=32, initial_population=1, max_population=1,
+                                evolution_enabled=False, latent_model_enabled=False,
+                                imagination_enabled=False), seed=112)
         agent = sim.agents[0]
         for i in range(35):
             sim._update_world_model(agent, "state", 0, "next-" + str(i), float(i % 3))
@@ -195,7 +255,8 @@ class EngineTests(unittest.TestCase):
             results.mkdir()
             (results / "broker_status.json").write_text(
                 json.dumps({"state": "exhausted", "updated_at": time.time()}), encoding="utf-8")
-            sim = Simulation(Config(grid_size=48, initial_population=1, max_population=1),
+            sim = Simulation(Config(grid_size=32, initial_population=1, max_population=1,
+                                   latent_model_enabled=False, imagination_enabled=False),
                              seed=121, request_dir=requests, result_dir=results)
             agent = sim.agents[0]
             agent["curiosity"] = 1.0
