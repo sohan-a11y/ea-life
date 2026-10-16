@@ -14,6 +14,7 @@ TICK_SLEEP=max(0.0,float(os.environ.get("TICK_SLEEP","0.04")))
 SAVE_EVERY=max(1,int(os.environ.get("SAVE_EVERY","10")))
 SEED=int(os.environ.get("SIM_SEED","20261015"))
 RESUME=os.environ.get("RESUME","0")=="1"
+MAX_EVENT_LOG_BYTES=max(65536,int(os.environ.get("MAX_EVENT_LOG_BYTES","2000000")))
 
 def atomic_json(path:Path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -21,10 +22,38 @@ def atomic_json(path:Path,value):
     temp.write_text(json.dumps(value,separators=(",",":")),encoding="utf-8")
     temp.replace(path)
 
+def append_event_batch(path:Path, events:list[dict], max_bytes:int=MAX_EVENT_LOG_BYTES):
+    """Append a batch of events while keeping the active log under a bounded size."""
+    if not events or max_bytes<1:
+        return
+    lines=[(json.dumps(event,separators=(",",":"))+"\n").encode("utf-8") for event in events]
+    payload=b"".join(lines)
+    if len(payload)>max_bytes:
+        retained=[]
+        size=0
+        for line in reversed(lines):
+            if size+len(line)>max_bytes:
+                break
+            retained.append(line)
+            size+=len(line)
+        payload=b"".join(reversed(retained))
+    if not payload:
+        return
+    path.parent.mkdir(parents=True,exist_ok=True)
+    current=path.stat().st_size if path.exists() else 0
+    if current+len(payload)>max_bytes:
+        rotated=path.with_name("events.previous.jsonl")
+        rotated.unlink(missing_ok=True)
+        if path.exists():
+            path.replace(rotated)
+    with path.open("ab") as stream:
+        stream.write(payload)
+
+
 def reset_files():
     STATE_DIR.mkdir(parents=True,exist_ok=True)
     CONTROL_DIR.mkdir(parents=True,exist_ok=True)
-    for name in ("snapshot.json","full_state.json","summary.json","events.jsonl"):
+    for name in ("snapshot.json","full_state.json","summary.json","events.jsonl","events.previous.jsonl"):
         (STATE_DIR/name).unlink(missing_ok=True)
     for flag in ("pause.flag","reset.flag","stop.flag"):
         (CONTROL_DIR/flag).unlink(missing_ok=True)
@@ -70,8 +99,7 @@ def main():
             sim.save_checkpoint(checkpoint)
             new_events=[e for e in sim.events if e["seq"]>saved_event_seq]
             if new_events:
-                with (STATE_DIR/"events.jsonl").open("a",encoding="utf-8") as stream:
-                    for event in new_events: stream.write(json.dumps(event,separators=(",",":"))+"\n")
+                append_event_batch(STATE_DIR/"events.jsonl",new_events)
                 saved_event_seq=max(e["seq"] for e in new_events)
             if sim.tick%100==0:
                 print("[tick %d] alive=%d births=%d curiosity=%.3f diversity=%.3f"%(
