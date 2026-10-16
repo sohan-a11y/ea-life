@@ -24,7 +24,7 @@ Metrics:
 - `world_model_surprise`: smoothed normalized log-loss proxy for next-state outcomes.
 - `world_model_entries` and `world_model_predictions`: model size and count of evaluated prior predictions.
 
-The next-state metric is an online diagnostic, not a held-out generalization result. It is affected by the policy's changing visitation distribution. Report it alongside sample counts and controlled outcomes.
+The next-state metric is an online diagnostic, not a held-out generalization result. It is affected by the policy's changing visitation distribution. Report it alongside sample counts and controlled outcomes. The surprise metric is a bounded proxy normalized over the retained next-state outcomes; after rare-outcome pruning, it is not a calibrated full-distribution log-loss.
 
 ### Shared environmental signals
 
