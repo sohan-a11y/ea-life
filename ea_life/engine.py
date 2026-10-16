@@ -56,6 +56,7 @@ class Config:
     imagination_enabled: bool = True
     imagination_horizon: int = 4
     imagination_beam_width: int = 3
+    imagination_bonus: float = 0.45
     def __post_init__(self):
         if not 32 <= self.grid_size <= 192: raise ValueError("grid_size must be between 32 and 192")
         if not 1 <= self.initial_population <= self.max_population <= 128: raise ValueError("population bounds are invalid")
@@ -65,6 +66,7 @@ class Config:
         if not 16 <= self.max_world_model_states <= 2048: raise ValueError("world-model bound must be between 16 and 2048")
         if not 1 <= self.imagination_horizon <= 12: raise ValueError("imagination horizon must be between 1 and 12")
         if not 1 <= self.imagination_beam_width <= 8: raise ValueError("imagination beam width must be between 1 and 8")
+        if not 0.0 <= self.imagination_bonus <= 10.0: raise ValueError("imagination bonus must be between 0 and 10")
 
 def config_from_env() -> Config:
     import os
@@ -83,6 +85,7 @@ def config_from_env() -> Config:
         imagination_enabled=os.environ.get("SIM_IMAGINATION_ENABLED","1") != "0",
         imagination_horizon=int(os.environ.get("SIM_IMAGINATION_HORIZON","4")),
         imagination_beam_width=int(os.environ.get("SIM_IMAGINATION_BEAM_WIDTH","3")),
+        imagination_bonus=float(os.environ.get("SIM_IMAGINATION_BONUS","0.45")),
     )
 
 def new_genome(rng: random.Random) -> dict[str,float]:
@@ -121,6 +124,11 @@ class Simulation:
         self.request_dir = Path(request_dir) if request_dir else None
         self.result_dir = Path(result_dir) if result_dir else None
         self.latent_model = NeuralLatentWorldModel(seed=seed + 104729)
+        # How much the imagined plan actually steers behaviour (see metrics()).
+        self.plan_stats = {"planned":0,"adopted":0,"promoted":0}
+        # Held-out evaluation: when frozen, transitions are recorded but not trained on.
+        self.latent_frozen = False
+        self.latent_heldout: list[dict[str,Any]] = []
         self.tick = 0
         self.total_created = self.total_births = self.total_deaths = self.goal_events = 0
         self.next_id = 1
@@ -289,7 +297,10 @@ class Simulation:
         return w
 
     def _latent_features(self,agent:dict[str,Any])->list[float]:
-        """Encode normalized local state; every feature is in [0, 1]."""
+        """Encode normalized local state plus the organism's task; every feature is in [0, 1].
+
+        The task one-hot matters: rewards depend on the task (explorers are paid for novelty,
+        navigators for beacon progress), and the latent model is shared by all organisms."""
         n=self.config.grid_size; x=int(agent["x"]); y=int(agent["y"])
         idx=self._idx(x,y); target=self._goal(agent); scale=max(1,n-1)
         resource=float(self.resources[idx]); hazard=float(self.hazards[idx])
@@ -311,7 +322,7 @@ class Simulation:
             clamp(float(danger_fields[idx])), clamp(sum(local_resources)/max(1,len(local_resources))),
             clamp(sum(local_hazards)/max(1,len(local_hazards))), clamp(crowd),
             clamp(x/scale), clamp(y/scale),
-        ]
+        ]+[1.0 if self._task(agent)==role else 0.0 for role in ROLES]
 
     def _choose_action(self,agent:dict[str,Any],occupied:set[int],
                        latent_observation:list[float]|None=None)->tuple[int,float,str,float]:
@@ -341,6 +352,7 @@ class Simulation:
                    +collective+predictive+self.rng.uniform(-.035,.035))
             candidates.append((score,action,novelty,uncertainty))
         if not candidates: raise RuntimeError("organism has no legal actions")
+        plan_action=None
         if (self.config.latent_model_enabled and self.config.imagination_enabled
                 and latent_observation is not None):
             legal_actions=[item[1] for item in candidates]
@@ -349,15 +361,25 @@ class Simulation:
                 beam_width=self.config.imagination_beam_width,
                 legal_first_actions=legal_actions)
             if plan is not None:
-                boost=0.45
+                boost=self.config.imagination_bonus
+                plan_action=plan["action"]
+                top_before=max(item[0] for item in candidates)
+                plan_score=next(item[0] for item in candidates if item[1]==plan_action)
+                plan_in_band_before=plan_score>=top_before-.03
                 candidates=[(score+(boost if candidate_action==plan["action"] else 0.0),
                              candidate_action,novelty_value,uncertainty_value)
                             for score,candidate_action,novelty_value,uncertainty_value in candidates]
+                top_after=max(item[0] for item in candidates)
+                self.plan_stats["planned"]+=1
+                # The bonus moved the plan's action into the greedy choice band.
+                self.plan_stats["promoted"]+=int((plan_score+boost)>=top_after-.03 and not plan_in_band_before)
         epsilon=.035+.18*novelty_now*clamp(g["novelty_drive"]/3.5)
         if self.rng.random()<epsilon: picked=self.rng.choice(candidates)
         else:
             high=max(item[0] for item in candidates)
             picked=self.rng.choice([item for item in candidates if item[0]>=high-.03])
+        if plan_action is not None:
+            self.plan_stats["adopted"]+=int(picked[1]==plan_action)
         return picked[1],picked[2],key,picked[3]
 
     def _request_topic(self,agent:dict[str,Any]):
@@ -488,6 +510,7 @@ class Simulation:
             self._request_topic(agent)
             if agent["energy"]<=.01 or agent["age"]>=self.config.max_age:
                 agent["alive"]=False; agent["visits"].clear(); agent["q_table"].clear(); agent["memory"].clear()
+                agent["world_model"]={}
                 self.total_deaths+=1
                 self._event("death",agent["id"]+" became inactive",
                             {"organism_id":agent["id"],"age":agent["age"],"generation":agent["generation"]})
@@ -510,7 +533,19 @@ class Simulation:
         self._danger_trail_view=self.danger_trails.copy()
         for observation,agent,action,reward in pending_transitions:
             next_observation=self._latent_features(agent)
-            self.latent_model.observe_transition(observation,action,next_observation,reward)
+            if self.latent_frozen:
+                if len(self.latent_heldout)<20000:
+                    self.latent_heldout.append({"obs":observation,"action":action,
+                                                "next_obs":next_observation,"reward":reward})
+            else:
+                self.latent_model.observe_transition(observation,action,next_observation,reward)
+
+    def freeze_latent_model(self):
+        """Stop training; later transitions are kept for a held-out evaluation."""
+        self.latent_frozen=True
+
+    def latent_heldout_metrics(self)->dict[str,Any]:
+        return self.latent_model.evaluate(self.latent_heldout)
 
     def _reproduce(self):
         living=[a for a in self.agents if a["alive"]]
@@ -550,7 +585,7 @@ class Simulation:
                            for k in genes)/len(genes) for a,b in pairs)/len(pairs)) if pairs else 0.0
         roles={role:sum(1 for a in living if self._task(a)==role) for role in ROLES}
         coverage=sum(1 for v in self.resources if v>.15)/max(1,len(self.resources))
-        wm_entries=sum(len(a.get("world_model",{})) for a in self.agents)
+        wm_entries=sum(len(a.get("world_model",{})) for a in living)
         wm_error=sum(float(a.get("world_model_error_sum",0.0)) for a in self.agents)
         wm_error_count=sum(int(a.get("world_model_error_count",0)) for a in self.agents)
         wm_correct=sum(int(a.get("world_model_next_correct",0)) for a in self.agents)
@@ -577,6 +612,11 @@ class Simulation:
             "danger_trail_mass":round(sum(self.danger_trails)/area,4),
             "collective_signal_coverage":round(trail_coverage,4),
             **self.latent_model.metrics(),
+            # Outcome the planner optimises: mean reward per organism per tick lived, all organisms.
+            "reward_per_agent_tick":round(sum(float(a["reward_total"]) for a in self.agents)
+                                           /max(1,sum(int(a["age"]) for a in self.agents)),4),
+            "latent_plan_adoption_rate":round(self.plan_stats["adopted"]/max(1,self.plan_stats["planned"]),4),
+            "latent_plan_promotion_rate":round(self.plan_stats["promoted"]/max(1,self.plan_stats["planned"]),4),
         }
 
     def public_snapshot(self)->dict[str,Any]:
@@ -599,7 +639,7 @@ class Simulation:
                 "resources":self.resources,"hazards":self.hazards,"global_visits":self.global_visits,
                 "resource_trails":self.resource_trails,"danger_trails":self.danger_trails,
                 "beacons":self.beacons,"agents":self.agents,"rng_state":self.rng.getstate(),
-                "latent_world_model":self.latent_model.state_dict()}
+                "latent_world_model":self.latent_model.state_dict(),"plan_stats":dict(self.plan_stats)}
 
     def load_state_dict(self,state:dict[str,Any]):
         saved_config = state.get("config", {})
@@ -614,6 +654,8 @@ class Simulation:
         self.rng.setstate(tupleify(state["rng_state"]))
         if "latent_world_model" in state:
             self.latent_model.load_state_dict(state["latent_world_model"])
+        if "plan_stats" in state:
+            self.plan_stats={k:int(state["plan_stats"].get(k,0)) for k in ("planned","adopted","promoted")}
 
     def save_checkpoint(self,path:str|Path):
         dest=Path(path); dest.parent.mkdir(parents=True,exist_ok=True)

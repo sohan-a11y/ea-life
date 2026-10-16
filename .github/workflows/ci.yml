@@ -14,17 +14,31 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Python
-        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py
+        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py analyze.py run_local.py
       - name: Check dashboard JavaScript
         run: node --check web/app.js
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -t . -v
       - name: Smoke test offline benchmark CLI
         run: python experiments.py --scenario mixed --seeds 1 --ticks 10 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-smoke.csv && test -s /tmp/ea-life-smoke.csv
       - name: Smoke test four-condition research ablation
         run: python experiments.py --ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-ablation.csv && test "$(wc -l < /tmp/ea-life-ablation.csv)" -eq 5
       - name: Smoke test neural latent imagination ablation
         run: python experiments.py --latent-ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-latent.csv && test "$(wc -l < /tmp/ea-life-latent.csv)" -eq 5
+      - name: Smoke test paired analysis
+        run: python analyze.py /tmp/ea-life-latent.csv | grep -q 'Reference condition'
+      - name: Smoke test the local launcher (no Docker)
+        run: |
+          python run_local.py --no-browser --grid 32 --population 4 --max-population 4 --max-organisms 4 --ticks 40 --no-imagination --data /tmp/ea-local --port 8010 > /tmp/ea-local.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true; cat /tmp/ea-local.log' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8010/api/state | python -c 'import json,sys; s=json.load(sys.stdin); assert s["ok"] and s["grid_size"] == 32'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
       - name: Validate Compose
         run: docker compose -f compose.yaml -f compose.ci.yaml config -q
       - name: Container integration smoke test
@@ -32,11 +46,24 @@ jobs:
           docker compose -f compose.yaml -f compose.ci.yaml up --build -d
           trap 'docker compose -f compose.yaml -f compose.ci.yaml down -v' EXIT
           docker compose -f compose.yaml -f compose.ci.yaml config | grep -q 'host_ip: 127.0.0.1'
-          bindings="$(docker inspect "$(docker compose -f compose.yaml -f compose.ci.yaml ps -q dashboard)" --format '{{json .HostConfig.PortBindings}}')"
-          printf 'Dashboard runtime port bindings: %s\n' "$bindings"
-          printf '%s' "$bindings" | grep -q '127.0.0.1'
           for attempt in $(seq 1 30); do
-            if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import json,urllib.request; s=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/state",timeout=2)); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+            # Test the path a browser uses: host -> runtime-published port -> dashboard.
+            port="$(docker compose -f compose.yaml -f compose.ci.yaml port dashboard 8000 2>/dev/null || true)"
+            if [ -n "$port" ] && curl -fsS --max-time 2 "http://$port/api/state" -o /tmp/ea-life-state.json \
+               && python -c 'import json; s=json.load(open("/tmp/ea-life-state.json")); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+              printf 'Dashboard reachable from the host at %s\n' "$port"
+              case "$port" in
+                127.0.0.1:*) ;;
+                *) echo "Dashboard must be published on loopback only"; exit 1 ;;
+              esac
+              # The probe must run and report BLOCKED; an exec failure fails the step (bash -e).
+              egress="$(docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import socket
+          try: socket.create_connection(("1.1.1.1", 443), timeout=5); print("EGRESS_OPEN")
+          except OSError: print("EGRESS_BLOCKED")')"
+              printf 'Outbound check from the dashboard container: %s\n' "$egress"
+              if [ "$egress" != "EGRESS_BLOCKED" ]; then
+                echo "Dashboard container must not have a route to the internet"; exit 1
+              fi
               exit 0
             fi
             sleep 1
