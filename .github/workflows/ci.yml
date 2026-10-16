@@ -44,7 +44,12 @@ jobs:
                 127.0.0.1:*) ;;
                 *) echo "Dashboard must be published on loopback only"; exit 1 ;;
               esac
-              if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import socket; socket.create_connection(("1.1.1.1", 443), timeout=5)'; then
+              # The probe must run and report BLOCKED; an exec failure fails the step (bash -e).
+              egress="$(docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import socket
+          try: socket.create_connection(("1.1.1.1", 443), timeout=5); print("EGRESS_OPEN")
+          except OSError: print("EGRESS_BLOCKED")')"
+              printf 'Outbound check from the dashboard container: %s\n' "$egress"
+              if [ "$egress" != "EGRESS_BLOCKED" ]; then
                 echo "Dashboard container must not have a route to the internet"; exit 1
               fi
               exit 0
