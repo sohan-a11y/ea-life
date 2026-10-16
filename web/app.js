@@ -71,6 +71,14 @@ function render(s){
  $("resourceTrailMass").textContent=Number(m.resource_trail_mass||0).toFixed(3);
  $("dangerTrailMass").textContent=Number(m.danger_trail_mass||0).toFixed(3);
  $("collectiveStatus").textContent=Number(m.collective_signal_coverage||0)>0?"ACTIVE":"WARMING";
+ $("latentStatus").textContent=m.latent_model_ready?"READY":"WARMING";
+ $("latentTransitions").textContent=Number(m.latent_transitions_seen||0).toLocaleString();
+ $("latentReplay").textContent=Number(m.latent_replay_size||0).toLocaleString()+" / 2048";
+ $("latentReconstruction").textContent=Number(m.latent_reconstruction_loss||0).toFixed(4);
+ $("latentDynamics").textContent=Number(m.latent_transition_loss||0).toFixed(4);
+ $("latentRewardMae").textContent=Number(m.latent_reward_mae||0).toFixed(3);
+ $("latentHorizon").textContent=Number(m.latent_last_plan_horizon||0);
+ $("latentPredictions").textContent=Number(m.latent_imagination_predictions||0).toLocaleString();
  $("error").textContent=Number(m.mean_prediction_error||0).toFixed(3);$("goals").textContent=m.goals_reached??0;
  $("tick").textContent=Number(s.tick||0).toLocaleString();$("tickHero").textContent="TICK "+String(s.tick||0).padStart(6,"0");
  $("gridLabel").textContent=(s.grid_size||96)+" × "+(s.grid_size||96);$("scenario").textContent=s.scenario||"mixed";
