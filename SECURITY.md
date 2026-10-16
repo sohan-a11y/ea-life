@@ -1,4 +1,4 @@
-# EA-Life v2 threat model
+# EA-Life security threat model
 
 ## Boundaries
 

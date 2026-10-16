@@ -47,7 +47,7 @@ def main():
             reset_files(); sim=Simulation(config=config,seed=SEED,request_dir=REQUEST_DIR,result_dir=RESULT_DIR)
     saved_event_seq=sim.event_seq
     started=time.time()
-    print("EA-Life v2 started",json.dumps({"grid":config.grid_size,"scenario":config.scenario,
+    print("EA-Life simulation started",json.dumps({"grid":config.grid_size,"scenario":config.scenario,
           "population":config.initial_population,"seed":SEED}),flush=True)
     while sim.tick<MAX_TICKS:
         if (CONTROL_DIR/"stop.flag").exists(): break

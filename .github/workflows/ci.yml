@@ -1,4 +1,4 @@
-name: EA-Life v2 CI
+name: EA-Life CI
 on:
   push:
   pull_request:

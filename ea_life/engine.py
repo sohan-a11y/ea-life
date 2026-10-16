@@ -1,4 +1,4 @@
-"""EA-Life v2 simulation engine. Standard library only; no network access here."""
+"""EA-Life simulation engine. Standard library only; no network access here."""
 from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json, math, random, time, uuid
