@@ -159,12 +159,18 @@ class EngineTests(unittest.TestCase):
         agent = sim.agents[0]
         agent["energy"] = 100.0
         # Force a stay action and distinct abstract state keys to isolate the update target.
+        original_q_values = sim._q_values
+        q_keys = []
+        def track_q_values(target_agent, key):
+            q_keys.append(key)
+            return original_q_values(target_agent, key)
         with patch.object(sim, "_state_key", side_effect=["old-state", "next-state"]), \
-             patch.object(sim, "_choose_action", return_value=(4, 0.1, "old-state", 0.1)):
+             patch.object(sim, "_choose_action", return_value=(4, 0.1, "old-state", 0.1)), \
+             patch.object(sim, "_q_values", side_effect=track_q_values):
             sim.step()
         self.assertFalse(agent["alive"])
-        self.assertIn("old-state", agent["q_table"])
-        self.assertNotIn("next-state", agent["q_table"])
+        self.assertIn("old-state", q_keys)
+        self.assertNotIn("next-state", q_keys)
 
     def test_world_model_surprise_uses_retained_outcome_counts(self):
         sim = Simulation(Config(grid_size=48, initial_population=1, max_population=1,
