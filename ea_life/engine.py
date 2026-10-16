@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 import json, math, random, time, uuid
 from pathlib import Path
 from typing import Any
+from .latent_world_model import NeuralLatentWorldModel
 
 ACTIONS = ((-1,-1),(0,-1),(1,-1),(-1,0),(0,0),(1,0),(-1,1),(0,1),(1,1))
 ROLES = ("forager","explorer","navigator","avoider")
@@ -51,6 +52,10 @@ class Config:
     max_world_model_states: int = 256
     world_model_enabled: bool = True
     collective_enabled: bool = True
+    latent_model_enabled: bool = True
+    imagination_enabled: bool = True
+    imagination_horizon: int = 4
+    imagination_beam_width: int = 3
     def __post_init__(self):
         if not 32 <= self.grid_size <= 192: raise ValueError("grid_size must be between 32 and 192")
         if not 1 <= self.initial_population <= self.max_population <= 128: raise ValueError("population bounds are invalid")
@@ -58,6 +63,8 @@ class Config:
         if self.scenario not in SCENARIOS: raise ValueError("unknown scenario")
         if self.max_q_states < 16 or self.max_memory < 4: raise ValueError("memory bounds are too small")
         if not 16 <= self.max_world_model_states <= 2048: raise ValueError("world-model bound must be between 16 and 2048")
+        if not 1 <= self.imagination_horizon <= 12: raise ValueError("imagination horizon must be between 1 and 12")
+        if not 1 <= self.imagination_beam_width <= 8: raise ValueError("imagination beam width must be between 1 and 8")
 
 def config_from_env() -> Config:
     import os
@@ -72,6 +79,10 @@ def config_from_env() -> Config:
         world_model_enabled=os.environ.get("SIM_WORLD_MODEL_ENABLED","1") != "0",
         collective_enabled=os.environ.get("SIM_COLLECTIVE_ENABLED","1") != "0",
         max_world_model_states=int(os.environ.get("SIM_WORLD_MODEL_STATES","256")),
+        latent_model_enabled=os.environ.get("SIM_LATENT_MODEL_ENABLED","1") != "0",
+        imagination_enabled=os.environ.get("SIM_IMAGINATION_ENABLED","1") != "0",
+        imagination_horizon=int(os.environ.get("SIM_IMAGINATION_HORIZON","4")),
+        imagination_beam_width=int(os.environ.get("SIM_IMAGINATION_BEAM_WIDTH","3")),
     )
 
 def new_genome(rng: random.Random) -> dict[str,float]:
@@ -109,6 +120,7 @@ class Simulation:
         self.rng = random.Random(seed)
         self.request_dir = Path(request_dir) if request_dir else None
         self.result_dir = Path(result_dir) if result_dir else None
+        self.latent_model = NeuralLatentWorldModel(seed=seed + 104729)
         self.tick = 0
         self.total_created = self.total_births = self.total_deaths = self.goal_events = 0
         self.next_id = 1
@@ -249,8 +261,8 @@ class Simulation:
                 predicted=max(next_counts.items(),key=lambda item:item[1])[0]
                 agent["world_model_next_correct"]+=int(predicted==next_state_key)
                 agent["world_model_prediction_count"]+=1
-            # Use tracked outcome counts after top-k pruning, keeping the diagnostic
-            # normalized over the outcomes this bounded model currently retains.
+            # Use tracked outcome counts after top-k pruning, keeping this diagnostic
+            # normalized over the outcomes the bounded model currently retains.
             retained_total=sum(int(value) for value in next_counts.values())
             probability=(int(next_counts.get(next_state_key,0))+1)/(retained_total+len(next_counts)+1)
             surprise=min(1.0,-math.log(probability)/math.log(max(2,retained_total+len(next_counts)+1)))
@@ -276,7 +288,33 @@ class Simulation:
         elif task=="forager": w["food"]*=1.35; w["novelty"]*=.8
         return w
 
-    def _choose_action(self,agent:dict[str,Any],occupied:set[int])->tuple[int,float,str,float]:
+    def _latent_features(self,agent:dict[str,Any])->list[float]:
+        """Encode normalized local state; every feature is in [0, 1]."""
+        n=self.config.grid_size; x=int(agent["x"]); y=int(agent["y"])
+        idx=self._idx(x,y); target=self._goal(agent); scale=max(1,n-1)
+        resource=float(self.resources[idx]); hazard=float(self.hazards[idx])
+        visits=int(agent.get("visits",{}).get(str(idx),0))
+        nx=(1.0/math.sqrt(1.0+visits))
+        local_resources=[]; local_hazards=[]
+        for yy in range(max(0,y-1),min(n,y+2)):
+            for xx in range(max(0,x-1),min(n,x+2)):
+                cell=self._idx(xx,yy)
+                local_resources.append(self.resources[cell]); local_hazards.append(self.hazards[cell])
+        crowd=sum(1 for other in self.agents if other.get("alive") and other["id"]!=agent["id"]
+                  and max(abs(other["x"]-x),abs(other["y"]-y))<=1)/8.0
+        trail_fields=getattr(self,"_resource_trail_view",self.resource_trails)
+        danger_fields=getattr(self,"_danger_trail_view",self.danger_trails)
+        return [
+            clamp(float(agent.get("energy",0.0))/100.0), clamp(resource), clamp(hazard), clamp(nx),
+            clamp(.5+(target["x"]-x)/(2.0*scale)), clamp(.5+(target["y"]-y)/(2.0*scale)),
+            clamp(self._distance(x,y,target)/scale), clamp(float(trail_fields[idx])),
+            clamp(float(danger_fields[idx])), clamp(sum(local_resources)/max(1,len(local_resources))),
+            clamp(sum(local_hazards)/max(1,len(local_hazards))), clamp(crowd),
+            clamp(x/scale), clamp(y/scale),
+        ]
+
+    def _choose_action(self,agent:dict[str,Any],occupied:set[int],
+                       latent_observation:list[float]|None=None)->tuple[int,float,str,float]:
         n=self.config.grid_size; x,y=agent["x"],agent["y"]; current=self._idx(x,y)
         key=self._state_key(agent); q=self._q_values(agent,key); target=self._goal(agent)
         current_dist=self._distance(x,y,target); weights=self._role_weights(agent); g=agent["genome"]
@@ -303,6 +341,18 @@ class Simulation:
                    +collective+predictive+self.rng.uniform(-.035,.035))
             candidates.append((score,action,novelty,uncertainty))
         if not candidates: raise RuntimeError("organism has no legal actions")
+        if (self.config.latent_model_enabled and self.config.imagination_enabled
+                and latent_observation is not None):
+            legal_actions=[item[1] for item in candidates]
+            plan=self.latent_model.imagine(latent_observation,
+                horizon=self.config.imagination_horizon,
+                beam_width=self.config.imagination_beam_width,
+                legal_first_actions=legal_actions)
+            if plan is not None:
+                boost=0.45
+                candidates=[(score+(boost if candidate_action==plan["action"] else 0.0),
+                             candidate_action,novelty_value,uncertainty_value)
+                            for score,candidate_action,novelty_value,uncertainty_value in candidates]
         epsilon=.035+.18*novelty_now*clamp(g["novelty_drive"]/3.5)
         if self.rng.random()<epsilon: picked=self.rng.choice(candidates)
         else:
@@ -359,6 +409,7 @@ class Simulation:
         self._resource_trail_view=self.resource_trails.copy()
         self._danger_trail_view=self.danger_trails.copy()
         occupied={self._idx(a["x"],a["y"]) for a in living_start}
+        pending_transitions:list[tuple[list[float],dict[str,Any],int,float]]=[]
         for agent in living_start:
             if not agent["alive"]: continue
             self._absorb_research(agent)
@@ -367,7 +418,8 @@ class Simulation:
             novelty_now=1/math.sqrt(1+old_seen); visits[str(old_idx)]=old_seen+1
             if len(visits)>700: visits.pop(next(iter(visits)))
             old_key=self._state_key(agent); previous_q=list(self._q_values(agent,old_key))
-            action,novelty,state_key,uncertainty=self._choose_action(agent,occupied)
+            latent_observation=(self._latent_features(agent) if self.config.latent_model_enabled else None)
+            action,novelty,state_key,uncertainty=self._choose_action(agent,occupied,latent_observation)
             dx,dy=ACTIONS[action]; nx=max(0,min(n-1,x0+dx)); ny=max(0,min(n-1,y0+dy))
             new_idx=self._idx(nx,ny)
             if new_idx!=old_idx:
@@ -413,6 +465,8 @@ class Simulation:
             td_error=target-previous_q[action]
             self._q_values(agent,state_key)[action]+=agent["genome"]["learning_rate"]*td_error
             self._update_model(agent,action,reward)
+            if latent_observation is not None:
+                pending_transitions.append((latent_observation,agent,action,reward))
             if self.config.world_model_enabled:
                 self._update_world_model(agent,state_key,action,new_key,reward)
             old_ema=agent["error_ema"]; normalized=min(3.0,abs(td_error)/4.0)
@@ -446,6 +500,13 @@ class Simulation:
         if self.config.evolution_enabled:
             self._reproduce()
         self.tick+=1
+        # Train only after the entire world step, so every sample's target observes the
+        # same end-of-tick fields rather than a partially updated organism iteration.
+        self._resource_trail_view=self.resource_trails.copy()
+        self._danger_trail_view=self.danger_trails.copy()
+        for observation,agent,action,reward in pending_transitions:
+            next_observation=self._latent_features(agent)
+            self.latent_model.observe_transition(observation,action,next_observation,reward)
 
     def _reproduce(self):
         living=[a for a in self.agents if a["alive"]]
@@ -511,6 +572,7 @@ class Simulation:
             "resource_trail_mass":round(sum(self.resource_trails)/area,4),
             "danger_trail_mass":round(sum(self.danger_trails)/area,4),
             "collective_signal_coverage":round(trail_coverage,4),
+            **self.latent_model.metrics(),
         }
 
     def public_snapshot(self)->dict[str,Any]:
@@ -518,7 +580,7 @@ class Simulation:
         keys=("id","parent_id","generation","role","x","y","energy","age","offspring","alive",
               "curiosity","learning_progress","error_ema","known_topics","facts","goals_reached","last_action")
         agents=[{k:a[k] for k in keys} for a in self.agents]
-        return {"schema_version":3,"tick":self.tick,"saved_at":time.time(),"grid_size":n,
+        return {"schema_version":4,"tick":self.tick,"saved_at":time.time(),"grid_size":n,
                 "scenario":self.config.scenario,
                 "resources":[[round(self.resources[y*n+x],3) for x in range(n)] for y in range(n)],
                 "hazards":[[round(self.hazards[y*n+x],3) for x in range(n)] for y in range(n)],
@@ -532,7 +594,8 @@ class Simulation:
                 "next_id":self.next_id,"event_seq":self.event_seq,"events":self.events[-120:],
                 "resources":self.resources,"hazards":self.hazards,"global_visits":self.global_visits,
                 "resource_trails":self.resource_trails,"danger_trails":self.danger_trails,
-                "beacons":self.beacons,"agents":self.agents,"rng_state":self.rng.getstate()}
+                "beacons":self.beacons,"agents":self.agents,"rng_state":self.rng.getstate(),
+                "latent_world_model":self.latent_model.state_dict()}
 
     def load_state_dict(self,state:dict[str,Any]):
         saved_config = state.get("config", {})
@@ -545,6 +608,8 @@ class Simulation:
                     "beacons","agents"):
             if key in state: setattr(self,key,state[key])
         self.rng.setstate(tupleify(state["rng_state"]))
+        if "latent_world_model" in state:
+            self.latent_model.load_state_dict(state["latent_world_model"])
 
     def save_checkpoint(self,path:str|Path):
         dest=Path(path); dest.parent.mkdir(parents=True,exist_ok=True)
