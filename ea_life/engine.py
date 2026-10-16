@@ -249,8 +249,11 @@ class Simulation:
                 predicted=max(next_counts.items(),key=lambda item:item[1])[0]
                 agent["world_model_next_correct"]+=int(predicted==next_state_key)
                 agent["world_model_prediction_count"]+=1
-            probability=(int(next_counts.get(next_state_key,0))+1)/(count+len(next_counts)+1)
-            surprise=min(1.0,-math.log(probability)/math.log(max(2,count+len(next_counts)+1)))
+            # Use tracked outcome counts after top-k pruning, keeping the diagnostic
+            # normalized over the outcomes this bounded model currently retains.
+            retained_total=sum(int(value) for value in next_counts.values())
+            probability=(int(next_counts.get(next_state_key,0))+1)/(retained_total+len(next_counts)+1)
+            surprise=min(1.0,-math.log(probability)/math.log(max(2,retained_total+len(next_counts)+1)))
             agent["world_model_surprise_sum"]+=surprise
             agent["world_model_surprise_count"]+=1
         next_counts[next_state_key]=int(next_counts.get(next_state_key,0))+1
@@ -309,6 +312,13 @@ class Simulation:
 
     def _request_topic(self,agent:dict[str,Any]):
         if self.request_dir is None or agent["curiosity"]<.84 or agent["pending_request_id"]: return
+        # Stop generating requests once the finite broker budget has been exhausted.
+        if self.result_dir is not None:
+            try:
+                broker_state=json.loads((self.result_dir/"broker_status.json").read_text(encoding="utf-8"))
+                if broker_state.get("state")=="exhausted": return
+            except (OSError,json.JSONDecodeError):
+                pass
         if self.tick-agent["last_request_tick"]<240: return
         unseen=[key for key in TOPICS if key not in agent["known_topics"]]
         if not unseen: return
@@ -393,8 +403,13 @@ class Simulation:
                 self._event("goal",agent["id"]+" reached a beacon",
                             {"organism_id":agent["id"],"generation":agent["generation"]})
                 agent["goal_index"]=(agent["goal_index"]+1)%len(self.beacons)
-            new_key=self._state_key(agent); next_q=self._q_values(agent,new_key)
-            target=reward+agent["genome"]["discount"]*max(next_q)
+            new_key=self._state_key(agent)
+            terminal_transition=(agent["energy"]<=.01 or agent["age"]+1>=self.config.max_age)
+            if terminal_transition:
+                target=reward
+            else:
+                next_q=self._q_values(agent,new_key)
+                target=reward+agent["genome"]["discount"]*max(next_q)
             td_error=target-previous_q[action]
             self._q_values(agent,state_key)[action]+=agent["genome"]["learning_rate"]*td_error
             self._update_model(agent,action,reward)
