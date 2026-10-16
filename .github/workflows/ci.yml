@@ -34,11 +34,19 @@ jobs:
           docker compose -f compose.yaml -f compose.ci.yaml up --build -d
           trap 'docker compose -f compose.yaml -f compose.ci.yaml down -v' EXIT
           docker compose -f compose.yaml -f compose.ci.yaml config | grep -q 'host_ip: 127.0.0.1'
-          bindings="$(docker inspect "$(docker compose -f compose.yaml -f compose.ci.yaml ps -q dashboard)" --format '{{json .HostConfig.PortBindings}}')"
-          printf 'Dashboard runtime port bindings: %s\n' "$bindings"
-          printf '%s' "$bindings" | grep -q '127.0.0.1'
           for attempt in $(seq 1 30); do
-            if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import json,urllib.request; s=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/state",timeout=2)); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+            # Test the path a browser uses: host -> runtime-published port -> dashboard.
+            port="$(docker compose -f compose.yaml -f compose.ci.yaml port dashboard 8000 2>/dev/null || true)"
+            if [ -n "$port" ] && curl -fsS --max-time 2 "http://$port/api/state" -o /tmp/ea-life-state.json \
+               && python -c 'import json; s=json.load(open("/tmp/ea-life-state.json")); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+              printf 'Dashboard reachable from the host at %s\n' "$port"
+              case "$port" in
+                127.0.0.1:*) ;;
+                *) echo "Dashboard must be published on loopback only"; exit 1 ;;
+              esac
+              if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import socket; socket.create_connection(("1.1.1.1", 443), timeout=5)'; then
+                echo "Dashboard container must not have a route to the internet"; exit 1
+              fi
               exit 0
             fi
             sleep 1

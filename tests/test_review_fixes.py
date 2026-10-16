@@ -139,6 +139,24 @@ class ReviewFixTests(unittest.TestCase):
                                     capture_output=True, text=True, env=env, cwd=str(ROOT)).stdout
             self.assertIn("latent_model_only (identical to reference on every seed)", report)
 
+class DashboardComposeTests(unittest.TestCase):
+    """Static checks; the CI container step tests the running stack."""
+
+    def _dashboard_and_networks(self):
+        lines = (ROOT / "compose.yaml").read_text(encoding="utf-8").splitlines()
+        text = "\n".join(line for line in lines if not line.lstrip().startswith("#")) + "\n"   # ignore YAML comments
+        dashboard = text[text.index("\n  dashboard:"):text.index("\n  broker:")]
+        return dashboard, text[text.rindex("\nnetworks:"):]
+
+    def test_dashboard_port_is_published_on_loopback_only(self):
+        dashboard, _ = self._dashboard_and_networks()
+        self.assertIn('ports: ["127.0.0.1:8000:8000"]', dashboard)
+
+    def test_dashboard_network_can_publish_ports_without_internet_route(self):
+        _, networks = self._dashboard_and_networks()
+        self.assertNotIn("internal: true", networks)      # internal-only networks get no published ports
+        self.assertIn('com.docker.network.bridge.enable_ip_masquerade: "false"', networks)
+
 
 if __name__ == "__main__":
     unittest.main()
