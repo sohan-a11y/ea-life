@@ -44,7 +44,7 @@ services:
     mem_limit: 128m
     cpus: 0.25
     restart: unless-stopped
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     environment:
       STATE_DIR: /state
       CONTROL_DIR: /control

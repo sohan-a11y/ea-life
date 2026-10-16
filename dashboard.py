@@ -21,15 +21,24 @@ def build_state()->dict:
     snap=read_json(STATE_DIR/"snapshot.json",{})
     events=[]
     try:
-        with (STATE_DIR/"events.jsonl").open(encoding="utf-8") as stream:
-            for line in stream:
-                try: events.append(json.loads(line))
-                except json.JSONDecodeError: continue
+        event_path=STATE_DIR/"events.jsonl"
+        # Bound both I/O and parsing cost even after a long-running experiment.
+        with event_path.open("rb") as stream:
+            stream.seek(0,2)
+            end=stream.tell()
+            stream.seek(max(0,end-262144))
+            if stream.tell():
+                stream.readline()  # discard a potentially partial first line
+            lines=stream.readlines()[-500:]
+        for line in lines:
+            try: events.append(json.loads(line.decode("utf-8")))
+            except (UnicodeDecodeError,json.JSONDecodeError): continue
     except OSError: pass
     summary=read_json(STATE_DIR/"summary.json",None)
     return {"ok":bool(snap),"schema_version":snap.get("schema_version",2),
       "tick":snap.get("tick",0),"saved_at":snap.get("saved_at"),"grid_size":snap.get("grid_size",96),
       "scenario":snap.get("scenario","mixed"),"resources":snap.get("resources",[]),"hazards":snap.get("hazards",[]),
+      "resource_trails":snap.get("resource_trails",[]),"danger_trails":snap.get("danger_trails",[]),
       "beacons":snap.get("beacons",[]),"agents":snap.get("agents",[]),"metrics":snap.get("metrics",{}),
       "events":events[-100:],"paused":(CONTROL_DIR/"pause.flag").exists(),"finished":summary is not None,
       "summary":summary}

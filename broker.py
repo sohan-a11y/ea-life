@@ -40,9 +40,20 @@ def retrieve(topic_id:str)->list[dict]:
                       "source":"https://en.wikipedia.org/"})
     return pages
 
+def write_status(state: str, completed: int) -> None:
+    """Publish broker availability for the isolated simulator to observe."""
+    RESULT_DIR.mkdir(parents=True,exist_ok=True)
+    path=RESULT_DIR/"broker_status.json"
+    temp=path.with_suffix(".tmp")
+    temp.write_text(json.dumps({"state":state,"completed_requests":completed,
+                                "max_requests":MAX_REQUESTS,"updated_at":time.time()}),
+                    encoding="utf-8")
+    temp.replace(path)
+
 def main():
     REQUEST_DIR.mkdir(parents=True,exist_ok=True); RESULT_DIR.mkdir(parents=True,exist_ok=True)
     completed=0; last=0.0
+    write_status("active",completed)
     print("Broker: allowlisted topic IDs, HTTPS GET only, no listener.",flush=True)
     while completed<MAX_REQUESTS:
         for path in sorted(REQUEST_DIR.glob("req_*.json")):
@@ -68,6 +79,7 @@ def main():
                 temp.write_text(json.dumps(result),encoding="utf-8"); temp.replace(output)
             completed+=1
         time.sleep(POLL_SECONDS)
-    print("Broker request budget reached; exiting cleanly.",flush=True)
+    write_status("exhausted",completed)
+    print("Broker request budget reached; marked exhausted.",flush=True)
 
 if __name__=="__main__": main()
