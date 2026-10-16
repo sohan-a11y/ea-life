@@ -3,6 +3,7 @@
 ## Boundaries
 
 - The life simulator runs with network mode disabled and has no route to external networks.
+- The dashboard is published on loopback only (`127.0.0.1:8000`). Its network is an ordinary bridge with IP masquerading off, so it has no working route to the internet. (An `internal: true` network would block the published port as well.)
 - The dashboard mounts only the public snapshot volume and a narrow control volume. It does not mount the request queue, raw checkpoint, genomes, Q tables or full episodic memory.
 - The broker accepts only fixed topic identifiers, uses HTTPS GET against a constant Wikipedia API endpoint, rate-limits requests, bounds response sizes and writes short snippets. It has no listening socket or published port.
 - Containers run as a dedicated unprivileged UID, with read-only root filesystem, all Linux capabilities dropped, no-new-privileges and resource limits.

@@ -47,6 +47,7 @@ Individual controls for custom comparisons are `--disable-world-model` and `--di
 - **`world_model_entries` now counts only living organisms.** Dead organisms no longer keep their tables.
 - **The tabular world model's next-state counts are diagnostics only.** Only its reward estimate affects choices.
 - **The curiosity score, learning progress and the Wikipedia research pathway** (terms, topics, fact counts) are recorded and displayed, but they never enter action choice, reward or energy. They only decide when a research request is sent.
+- **The dashboard port could not be reached from the host.** The dashboard's only network was `internal: true`, and Docker does not publish ports for such containers. The first container test in CI (commit f3342d7: `curl` from the runner to 127.0.0.1:8000) failed, and so did the next one, which read the runtime port mapping. The test that passes now calls the API from inside the dashboard container, so it cannot catch this. Fix: the network is an ordinary bridge with IP masquerading off, so the published port works and the dashboard still has no working route to the internet. The port is published on 127.0.0.1 only (before, v3 published it on all host interfaces, which exposed the pause, resume and reset controls to the local network). The v4 branch's CI tests this network setup on a running stack.
 - **Tests:** `python -m unittest discover -s tests -t . -v`.
 
 ## Run locally
