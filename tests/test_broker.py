@@ -1,4 +1,8 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 from broker import TOPICS, retrieve
 
 
@@ -10,6 +14,14 @@ class BrokerSafetyTests(unittest.TestCase):
     def test_arbitrary_topic_is_rejected_before_network_access(self):
         with self.assertRaises(ValueError):
             retrieve("https://example.invalid/should-not-be-requested")
+
+    def test_broker_status_is_atomically_published(self):
+        with tempfile.TemporaryDirectory() as tmp, patch("broker.RESULT_DIR", Path(tmp)):
+            import broker
+            broker.write_status("exhausted", 200)
+            status = json.loads((Path(tmp) / "broker_status.json").read_text())
+            self.assertEqual(status["state"], "exhausted")
+            self.assertEqual(status["completed_requests"], 200)
 
 
 if __name__ == "__main__":

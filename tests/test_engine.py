@@ -1,7 +1,9 @@
 import json
+import math
 import random
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from ea_life.engine import ACTIONS, Config, GENE_BOUNDS, Simulation, curiosity_score, mutate_genome, new_genome
@@ -207,6 +209,34 @@ class EngineTests(unittest.TestCase):
         metrics = sim.metrics()
         self.assertEqual(metrics["latent_transitions_seen"], 0)
         self.assertEqual(metrics["latent_imagination_calls"], 0)
+
+
+    def test_terminal_transition_does_not_bootstrap_next_q_value(self):
+        cfg = Config(grid_size=32, initial_population=1, max_population=1,
+                     evolution_enabled=False, max_age=1, latent_model_enabled=False,
+                     imagination_enabled=False)
+        sim = Simulation(cfg, seed=111)
+        agent = sim.agents[0]
+        agent["energy"] = 100.0
+        with patch.object(sim, "_state_key", side_effect=["old-state", "next-state"]), \
+             patch.object(sim, "_choose_action", return_value=(4, 0.1, "old-state", 0.1)):
+            sim.step()
+        self.assertFalse(agent["alive"])
+        self.assertIn("old-state", agent["q_table"])
+        self.assertNotIn("next-state", agent["q_table"])
+
+    def test_world_model_surprise_uses_retained_outcome_counts(self):
+        sim = Simulation(Config(grid_size=32, initial_population=1, max_population=1,
+                                evolution_enabled=False, latent_model_enabled=False,
+                                imagination_enabled=False), seed=112)
+        agent = sim.agents[0]
+        for i in range(35):
+            sim._update_world_model(agent, "state", 0, "next-" + str(i), float(i % 3))
+        row = agent["world_model"]["state|0"]
+        self.assertLessEqual(len(row["next_counts"]), 24)
+        self.assertGreater(sum(row["next_counts"].values()), 0)
+        sim._update_world_model(agent, "state", 0, "next-34", 1.0)
+        self.assertTrue(math.isfinite(agent["world_model_surprise_sum"]))
 
     def test_action_space_has_stay_and_eight_moves(self):
         self.assertEqual(len(ACTIONS), 9)
