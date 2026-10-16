@@ -104,6 +104,8 @@ The default scenario is mixed, with twelve initial organisms and a maximum live 
 | SIM_TICKS | 100000 | Maximum experiment ticks |
 | TICK_SLEEP | 0.04 | Delay per tick; lower is faster |
 | SAVE_EVERY | 10 | Checkpoint interval |
+| MAX_EVENT_LOG_BYTES | 2000000 | Active JSONL event-log size cap; the previous log is rotated |
+| BROKER_MAX_REQUESTS | 200 | Maximum number of broker queue entries processed before research access is marked exhausted |
 | SIM_SEED | 20261015 | Python RNG seed |
 | SIM_WORLD_MODEL_ENABLED | 1 | Set to 0 to disable the predictive transition model |
 | SIM_WORLD_MODEL_STATES | 256 | Maximum state/action entries per organism |

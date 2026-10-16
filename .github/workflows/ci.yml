@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Python
-        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py experiments.py
+        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py
       - name: Check dashboard JavaScript
         run: node --check web/app.js
       - name: Run unit tests
