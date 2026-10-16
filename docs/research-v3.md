@@ -71,7 +71,7 @@ Compare each condition and scenario using:
 - diversity and reproduction: `genomic_diversity`, `births`, `max_generation`
 - collective field usage: `resource_trail_mass`, `danger_trail_mass`, `collective_signal_coverage`
 
-For each primary outcome, aggregate per-seed differences using paired comparisons. Report mean difference, dispersion, and confidence interval; account for population collapse and censored runs rather than silently dropping them. Define primary outcomes before looking at the full matrix to reduce selective reporting.
+For each primary outcome, aggregate per-seed differences using paired comparisons (`python analyze.py results.csv`). Use `reward_per_agent_tick` as the primary outcome: in the default protocol `alive` and `deaths` sit at the population cap. Report mean difference, dispersion, and confidence interval; account for population collapse and censored runs rather than silently dropping them. Define primary outcomes before looking at the full matrix to reduce selective reporting.
 
 ## Known limitations and next experiments
 

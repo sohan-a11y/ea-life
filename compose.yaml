@@ -44,7 +44,7 @@ services:
     mem_limit: 128m
     cpus: 0.25
     restart: unless-stopped
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     environment:
       STATE_DIR: /state
       CONTROL_DIR: /control
@@ -81,5 +81,11 @@ volumes:
   result_inbox:
   control_queue:
 networks:
+  # Docker does not publish ports for a container whose only network is `internal: true`,
+  # so with that setting the dashboard could not be reached from the host. This is an ordinary
+  # bridge with IP masquerading off: the published loopback port works, and the dashboard
+  # still has no working route to the internet (CI checks both).
   dashboard_net:
-    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
