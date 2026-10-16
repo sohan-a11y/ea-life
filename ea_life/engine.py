@@ -1,4 +1,4 @@
-"""EA-Life v2 simulation engine. Standard library only; no network access here."""
+"""EA-Life simulation engine. Standard library only; no network access here."""
 from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json, math, random, time, uuid
@@ -415,6 +415,7 @@ class Simulation:
             self._request_topic(agent)
             if agent["energy"]<=.01 or agent["age"]>=self.config.max_age:
                 agent["alive"]=False; agent["visits"].clear(); agent["q_table"].clear(); agent["memory"].clear()
+                agent["world_model"]={}
                 self.total_deaths+=1
                 self._event("death",agent["id"]+" became inactive",
                             {"organism_id":agent["id"],"age":agent["age"],"generation":agent["generation"]})
@@ -470,7 +471,7 @@ class Simulation:
                            for k in genes)/len(genes) for a,b in pairs)/len(pairs)) if pairs else 0.0
         roles={role:sum(1 for a in living if self._task(a)==role) for role in ROLES}
         coverage=sum(1 for v in self.resources if v>.15)/max(1,len(self.resources))
-        wm_entries=sum(len(a.get("world_model",{})) for a in self.agents)
+        wm_entries=sum(len(a.get("world_model",{})) for a in living)
         wm_error=sum(float(a.get("world_model_error_sum",0.0)) for a in self.agents)
         wm_error_count=sum(int(a.get("world_model_error_count",0)) for a in self.agents)
         wm_correct=sum(int(a.get("world_model_next_correct",0)) for a in self.agents)
@@ -496,6 +497,9 @@ class Simulation:
             "resource_trail_mass":round(sum(self.resource_trails)/area,4),
             "danger_trail_mass":round(sum(self.danger_trails)/area,4),
             "collective_signal_coverage":round(trail_coverage,4),
+            # Mean reward per organism per tick lived, over all organisms ever created.
+            "reward_per_agent_tick":round(sum(float(a["reward_total"]) for a in self.agents)
+                                           /max(1,sum(int(a["age"]) for a in self.agents)),4),
         }
 
     def public_snapshot(self)->dict[str,Any]:

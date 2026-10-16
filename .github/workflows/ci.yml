@@ -1,4 +1,4 @@
-name: EA-Life v2 CI
+name: EA-Life CI
 on:
   push:
   pull_request:
@@ -14,14 +14,16 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Python
-        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py experiments.py
+        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py analyze.py
       - name: Check dashboard JavaScript
         run: node --check web/app.js
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -t . -v
       - name: Smoke test offline benchmark CLI
         run: python experiments.py --scenario mixed --seeds 1 --ticks 10 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-smoke.csv && test -s /tmp/ea-life-smoke.csv
       - name: Smoke test four-condition research ablation
         run: python experiments.py --ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-ablation.csv && test "$(wc -l < /tmp/ea-life-ablation.csv)" -eq 5
+      - name: Smoke test paired analysis
+        run: python analyze.py /tmp/ea-life-ablation.csv | grep -q 'Reference condition'
       - name: Validate Compose
         run: docker compose config -q

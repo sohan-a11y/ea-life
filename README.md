@@ -39,6 +39,16 @@ python experiments.py --all-scenarios --ablation-suite --seeds 10 --ticks 2000 -
 
 Individual controls for custom comparisons are `--disable-world-model` and `--disable-collective`. Each CSV row records which pathways were enabled. Details and hypotheses are in [the v3 research protocol](docs/research-v3.md).
 
+### Review notes (16 Oct 2026)
+
+- **Paired analysis.** `python analyze.py v3-ablation.csv` compares each condition with `baseline` on the same seeds: mean difference, 95% interval, sign-flip p-value, and Holm correction.
+- **Primary outcome: `reward_per_agent_tick`.** It is the mean reward per organism per tick lived, and is now reported. In the default protocol (grid 48, 8 → 16 organisms, 2000 ticks) the population stays at its cap in every seed tested, so `alive` and `deaths` cannot show differences.
+- **The environment drains during a run.** Food regrows only up to 0.09 and coverage counts cells above 0.15, so eaten rich patches never come back: food coverage fell from 0.57 to below 0.01 between ticks 1500 and 1900 (5 seeds, documented settings). Hazards fade from 0.75 to 0.25. Report the tick count with every result.
+- **`world_model_entries` now counts only living organisms.** Dead organisms no longer keep their tables.
+- **The tabular world model's next-state counts are diagnostics only.** Only its reward estimate affects choices.
+- **The curiosity score, learning progress and the Wikipedia research pathway** (terms, topics, fact counts) are recorded and displayed, but they never enter action choice, reward or energy. They only decide when a research request is sent.
+- **Tests:** `python -m unittest discover -s tests -t . -v`.
+
 ## Run locally
 
 Requires Docker Engine and Docker Compose v2.
@@ -66,17 +76,6 @@ python experiments.py --scenario mixed --disable-evolution --seeds 3 --ticks 600
 
 The runner prints one summary row per scenario/seed and writes CSV files for analysis. It uses the same simulation engine with the external research broker disabled, so benchmark runs are offline and reproducible from the recorded seed. This is a small experiment harness, not a statistical claim: use more seeds and confidence intervals before concluding that a behavior or genome is superior.
 
-## Repeatable offline experiment suite
-
-Run matched seeds across scenarios, then compare with a no-reproduction baseline:
-
-~~~bash
-python experiments.py --all-scenarios --seeds 3 --ticks 600 --grid-size 48 --output experiment-results.csv
-python experiments.py --scenario mixed --disable-evolution --seeds 3 --ticks 600 --grid-size 48 --output no-evolution.csv
-~~~
-
-The CLI prints one summary row per scenario and seed and writes CSV for analysis. It uses the simulation engine with the research broker disabled, so benchmark runs are offline and repeatable from the seed. This is a small experiment harness, not a statistical conclusion: use more seeds and uncertainty intervals before claiming that one policy is superior.
-
 ## Run in Codespaces
 
 1. Create a Codespace from this repository's default branch.
@@ -87,7 +86,7 @@ The CLI prints one summary row per scenario and seed and writes CSV for analysis
    docker compose up --build -d
    ~~~
 
-4. Open the forwarded port 8000 named EA-Life v2 dashboard.
+4. Open the forwarded port 8000 named EA-Life dashboard.
 
 Codespaces is a development session, not a permanent host. The dashboard runs only while the Codespace and containers are running.
 
