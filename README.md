@@ -78,6 +78,18 @@ python analyze.py v4-latent-ablation.csv
 python -m unittest discover -s tests -t . -v
 ~~~
 
+## Run on your computer without Docker
+
+Requires Python 3.10 or newer; nothing to install.
+
+~~~bash
+python run_local.py                    # opens the dashboard at http://127.0.0.1:8000
+python run_local.py --no-imagination   # faster: planning off
+python run_local.py --resume           # continue the previous run
+~~~
+
+This starts the simulator and the dashboard only. The research broker, the one component that uses the internet, is not started, so nothing leaves the computer. The dashboard listens on 127.0.0.1; if port 8000 is taken, it uses the next free port and prints the address. Stop with Ctrl+C. Run data is kept in `local-data/`.
+
 ## Run locally
 
 Requires Docker Engine and Docker Compose v2.

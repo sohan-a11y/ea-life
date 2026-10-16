@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Python
-        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py analyze.py
+        run: python -m compileall -q ea_life runner.py broker.py dashboard.py experiments.py analyze.py run_local.py
       - name: Check dashboard JavaScript
         run: node --check web/app.js
       - name: Run unit tests
@@ -27,6 +27,18 @@ jobs:
         run: python experiments.py --latent-ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-latent.csv && test "$(wc -l < /tmp/ea-life-latent.csv)" -eq 5
       - name: Smoke test paired analysis
         run: python analyze.py /tmp/ea-life-latent.csv | grep -q 'Reference condition'
+      - name: Smoke test the local launcher (no Docker)
+        run: |
+          python run_local.py --no-browser --grid 32 --population 4 --max-population 4 --max-organisms 4 --ticks 40 --no-imagination --data /tmp/ea-local --port 8010 > /tmp/ea-local.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true; cat /tmp/ea-local.log' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8010/api/state | python -c 'import json,sys; s=json.load(sys.stdin); assert s["ok"] and s["grid_size"] == 32'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
       - name: Validate Compose
         run: docker compose -f compose.yaml -f compose.ci.yaml config -q
       - name: Container integration smoke test

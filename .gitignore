@@ -8,3 +8,4 @@ state/
 exchange/
 experiment-results*.csv
 no-evolution*.csv
+local-data/
