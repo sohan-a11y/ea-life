@@ -8,10 +8,10 @@ This is an intentionally small research prototype implemented with the Python st
 
 ## Model architecture
 
-- **Input observations (14 values):** normalized energy, local resource and hazard, novelty, relative beacon coordinates/distance, local collective traces, local resource/hazard averages, neighborhood crowding and normalized position.
+- **Input observations (18 values):** normalized energy, local resource and hazard, novelty, relative beacon coordinates/distance, local collective traces, local resource/hazard averages, neighborhood crowding, normalized position, and a one-hot of the organism's task (forager, explorer, navigator, avoider). The task is needed because rewards depend on it and the model is shared by all organisms.
 - **Encoder:** a tanh fully connected layer maps observations to an 8-dimensional latent vector.
 - **Decoder:** a sigmoid fully connected layer reconstructs the 14 normalized observation values; this reconstruction loss provides a representation-learning signal.
-- **Dynamics model:** a small tanh multilayer perceptron receives the latent state concatenated with a 9-way action one-hot vector. It predicts the next latent vector and immediate reward.
+- **Dynamics model:** a small tanh multilayer perceptron receives the latent state concatenated with a 9-way action one-hot vector. It predicts the change in the latent vector (next = current + change) and the immediate reward. The latent rows of its output layer start at one tenth of their usual scale.
 - **Training:** online supervised transition learning plus reconstruction learning and sampling from a bounded shared replay pool. The model shares parameters across organisms; it does not train an independent neural network for every genome.
 - **Imagination:** after 48 real transitions, bounded beam search composes repeated latent transitions, accumulating discounted predicted rewards and selecting the first action of the best sequence. By default it plans 4 steps with beam width 3. Both values are configurable and validated (horizon 1 to 12, beam width 1 to 8).
 - **Safety and resource bounds:** replay capacity is capped at 2,048 transitions; the existing Docker memory/CPU/PID limits remain in force; the model cannot execute real-world actions or read from the network.
@@ -37,7 +37,7 @@ python experiments.py --latent-ablation-suite --seeds 10 --ticks 2000 --grid-siz
 
 This produces four conditions:
 1. `v3_control`: same old world-model/collective controls, neural latent model disabled.
-2. `latent_model_only`: neural representation and transition model train, but imagined plans do not influence action choice.
+2. `latent_model_only`: neural representation and transition model train, but imagined plans do not influence action choice. Its behaviour, and therefore every outcome, is identical to `v3_control` on each seed by construction; compare it only on model-quality metrics.
 3. `one_step_planning`: latent model plus horizon-one imagined planning.
 4. `long_horizon_imagination`: latent model plus the requested multi-step horizon.
 
@@ -56,12 +56,15 @@ The default model activates planning after at least 48 real transitions. Before 
 ## Metrics and interpretation
 
 - `latent_transitions_seen`, `latent_replay_size`, `latent_training_updates`: learning and memory volume.
-- `latent_reconstruction_loss`: smoothed autoencoder reconstruction MSE.
+- `latent_reconstruction_loss`: smoothed autoencoder reconstruction MSE on new transitions, measured before training on them (prequential); replayed samples are not counted.
 - `latent_transition_loss`: smoothed latent transition plus reward prediction loss.
 - `latent_reward_mae`: smoothed immediate reward prediction MAE in environment-reward units.
 - `latent_imagination_calls`, `latent_imagination_predictions`, `latent_last_plan_horizon`, `latent_last_plan_return`: planning activity and the model's estimated return.
+- `latent_plan_adoption_rate`: share of planned decisions where the plan's first action was taken. `latent_plan_promotion_rate`: share where the plan's action was outside the greedy choice band until the bonus moved it in.
+- `reward_per_agent_tick`: mean reward per organism per tick lived, over all organisms; the primary outcome.
+- With `--heldout-ticks N`: `heldout_reward_mae`, `heldout_constant_reward_mae`, `heldout_latent_mse` and `heldout_persistence_latent_mse`, computed on the last N ticks with the model frozen.
 
-These online losses are affected by the policy's changing data distribution. They are not held-out measures of generalization. The latent representation is not guaranteed to have semantic structure, and its dimensions are not individually interpretable. A robust follow-up should freeze evaluation seeds, keep a held-out transition set, and report paired per-seed differences with uncertainty intervals.
+These online losses are affected by the policy's changing data distribution. They are not held-out measures of generalization; use `--heldout-ticks` for that, and compare against the persistence and constant baselines. Analyse paired seeds with `python analyze.py`. In the default protocol `alive` and `deaths` sit at the population cap, so use `reward_per_agent_tick` as the primary outcome. The latent representation is not guaranteed to have semantic structure, and its dimensions are not individually interpretable. A robust follow-up should freeze evaluation seeds, keep a held-out transition set, and report paired per-seed differences with uncertainty intervals.
 
 ## Limitations and follow-up
 

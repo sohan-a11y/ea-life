@@ -31,6 +31,10 @@ def parse_args():
     parser.add_argument("--disable-imagination", action="store_true")
     parser.add_argument("--imagination-horizon", type=int, default=4)
     parser.add_argument("--imagination-beam-width", type=int, default=3)
+    parser.add_argument("--imagination-bonus", type=float, default=0.45,
+                        help="score bonus for the imagined plan's first action (0 = plan has no influence)")
+    parser.add_argument("--heldout-ticks", type=int, default=0,
+                        help="freeze the latent model for the last N ticks and report held-out prediction error")
     parser.add_argument("--output", default="experiment-results.csv")
     args = parser.parse_args()
     if args.seeds < 1 or args.ticks < 1:
@@ -39,6 +43,10 @@ def parse_args():
         parser.error("--imagination-horizon must be between 1 and 12")
     if args.imagination_beam_width < 1 or args.imagination_beam_width > 8:
         parser.error("--imagination-beam-width must be between 1 and 8")
+    if not 0.0 <= args.imagination_bonus <= 10.0:
+        parser.error("--imagination-bonus must be between 0 and 10")
+    if not 0 <= args.heldout_ticks < args.ticks:
+        parser.error("--heldout-ticks must be at least 0 and smaller than --ticks")
     if sum([args.ablation_suite,args.latent_ablation_suite]) > 1:
         parser.error("--ablation-suite and --latent-ablation-suite are mutually exclusive")
     if args.latent_ablation_suite and (args.disable_latent_model or args.disable_imagination):
@@ -84,11 +92,16 @@ def run():
                              latent_model_enabled=latent_model_enabled,
                              imagination_enabled=imagination_enabled,
                              imagination_horizon=imagination_horizon,
-                             imagination_beam_width=args.imagination_beam_width)
+                             imagination_beam_width=args.imagination_beam_width,
+                             imagination_bonus=args.imagination_bonus)
                 sim = Simulation(config=cfg, seed=seed)
-                for _ in range(args.ticks):
+                for t in range(args.ticks):
+                    if args.heldout_ticks and t == args.ticks - args.heldout_ticks:
+                        sim.freeze_latent_model()
                     sim.step()
                 metrics = sim.metrics()
+                if args.heldout_ticks and latent_model_enabled:
+                    metrics.update(sim.latent_heldout_metrics())
                 row = {"scenario":scenario,"ablation":ablation,"seed":seed,"ticks":sim.tick,
                        "evolution_enabled":cfg.evolution_enabled,
                        "world_model_enabled":world_model_enabled,
@@ -96,14 +109,19 @@ def run():
                        "latent_model_enabled":latent_model_enabled,
                        "imagination_enabled":imagination_enabled,
                        "imagination_horizon":imagination_horizon,
-                       "imagination_beam_width":args.imagination_beam_width,**metrics}
+                       "imagination_beam_width":args.imagination_beam_width,
+                       "imagination_bonus":args.imagination_bonus,
+                       "heldout_ticks":args.heldout_ticks,**metrics}
                 row["roles"] = json.dumps(metrics["roles"],sort_keys=True)
                 rows.append(row)
                 print(json.dumps(row,sort_keys=True),flush=True)
     output=Path(args.output)
     output.parent.mkdir(parents=True,exist_ok=True)
     with output.open("w",newline="",encoding="utf-8") as handle:
-        writer=csv.DictWriter(handle,fieldnames=list(rows[0].keys()))
+        fieldnames=[]
+        for row in rows:                     # rows differ: held-out columns exist only with the latent model
+            fieldnames.extend(key for key in row if key not in fieldnames)
+        writer=csv.DictWriter(handle,fieldnames=fieldnames,restval="")
         writer.writeheader()
         writer.writerows(rows)
     print("Wrote %d experiment summaries to %s"%(len(rows),output),flush=True)

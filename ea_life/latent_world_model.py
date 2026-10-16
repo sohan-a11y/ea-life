@@ -9,7 +9,9 @@ import math
 import random
 from typing import Any, Sequence
 
-FEATURE_DIM = 14
+LOCAL_FEATURE_DIM = 14
+ROLE_FEATURE_DIM = 4   # one-hot task: forager, explorer, navigator, avoider
+FEATURE_DIM = LOCAL_FEATURE_DIM + ROLE_FEATURE_DIM
 LATENT_DIM = 8
 HIDDEN_DIM = 24
 ACTION_COUNT = 9
@@ -77,6 +79,9 @@ class NeuralLatentWorldModel:
         self.dynamics_b1 = _vector(self.rng, HIDDEN_DIM)
         self.dynamics_w2 = _matrix(self.rng, LATENT_DIM + 1, HIDDEN_DIM)
         self.dynamics_b2 = _vector(self.rng, LATENT_DIM + 1)
+        for row in self.dynamics_w2[:LATENT_DIM]:     # start with a small predicted change
+            for j in range(len(row)):
+                row[j] *= 0.1
         self.transitions_seen = 0
         self.training_updates = 0
         self.transition_loss_ema = 0.0
@@ -105,16 +110,19 @@ class NeuralLatentWorldModel:
         return list(latent) + [1.0 if i == int(action) else 0.0 for i in range(ACTION_COUNT)]
 
     def predict(self, latent: Sequence[float], action: int) -> tuple[list[float], float]:
-        """Predict next latent state and immediate reward without changing model state."""
+        """Predict next latent state and immediate reward without changing model state.
+
+        Residual dynamics: the network predicts the change of the latent state, so an
+        untrained model already matches the 'nothing changes' baseline."""
         z = _as_float_vector(latent, LATENT_DIM)
         x = self._dynamics_input(z, action)
         hidden = [_tanh(value) for value in _dense(self.dynamics_w1, self.dynamics_b1, x)]
         out = [_tanh(value) for value in _dense(self.dynamics_w2, self.dynamics_b2, hidden)]
-        next_latent = out[:LATENT_DIM]
+        next_latent = [max(-1.0, min(1.0, z[i] + out[i])) for i in range(LATENT_DIM)]
         reward = max(-1.0, min(1.0, out[-1])) * REWARD_SCALE
         return next_latent, reward
 
-    def _train_autoencoder(self, observation: Sequence[float]) -> float:
+    def _train_autoencoder(self, observation: Sequence[float], record: bool = True) -> float:
         x = _as_float_vector(observation, FEATURE_DIM)
         z_pre = _dense(self.encoder_w, self.encoder_b, x)
         z = [_tanh(value) for value in z_pre]
@@ -139,12 +147,14 @@ class NeuralLatentWorldModel:
             for k in range(FEATURE_DIM):
                 self.encoder_w[j][k] -= lr * grad_z_pre[j] * x[k]
             self.encoder_b[j] -= lr * grad_z_pre[j]
-        self.reconstruction_loss_ema = (0.97 * self.reconstruction_loss_ema
-                                         + 0.03 * loss)
+        if record:
+            self.reconstruction_loss_ema = (0.97 * self.reconstruction_loss_ema
+                                             + 0.03 * loss)
         return loss
 
     def _train_transition(self, observation: Sequence[float], action: int,
-                          next_observation: Sequence[float], reward: float) -> float:
+                          next_observation: Sequence[float], reward: float,
+                          record: bool = True) -> float:
         state_latent = self.encode(observation)
         target_latent = self.encode(next_observation)
         model_input = self._dynamics_input(state_latent, action)
@@ -153,7 +163,8 @@ class NeuralLatentWorldModel:
         pre2 = _dense(self.dynamics_w2, self.dynamics_b2, hidden)
         outputs = [_tanh(value) for value in pre2]
         target_reward = max(-1.0, min(1.0, float(reward) / REWARD_SCALE))
-        target = list(target_latent) + [target_reward]
+        # Residual target: the change of the latent state (see predict()).
+        target = [target_latent[i] - state_latent[i] for i in range(LATENT_DIM)] + [target_reward]
         latent_error = [outputs[i] - target[i] for i in range(LATENT_DIM)]
         reward_error = outputs[-1] - target[-1]
         latent_loss = sum(value * value for value in latent_error) / LATENT_DIM
@@ -179,17 +190,19 @@ class NeuralLatentWorldModel:
                 self.dynamics_w1[i][j] -= lr * grad_hidden_pre[i] * model_input[j]
             self.dynamics_b1[i] -= lr * grad_hidden_pre[i]
         self.training_updates += 1
-        self.transition_loss_ema = (0.97 * self.transition_loss_ema + 0.03 * loss)
-        # The reward MAE is reported in environment reward units.
-        self.reward_mae_ema = 0.97 * self.reward_mae_ema + 0.03 * abs(
-            outputs[-1] * REWARD_SCALE - float(reward))
+        if record:
+            # Prequential: error on a transition the model has not trained on yet,
+            # measured before this update. Replayed samples are not counted.
+            self.transition_loss_ema = (0.97 * self.transition_loss_ema + 0.03 * loss)
+            self.reward_mae_ema = 0.97 * self.reward_mae_ema + 0.03 * abs(
+                outputs[-1] * REWARD_SCALE - float(reward))
         return loss
 
-    def _train_sample(self, sample: dict[str, Any]) -> None:
+    def _train_sample(self, sample: dict[str, Any], record: bool = True) -> None:
         self._train_transition(sample["obs"], int(sample["action"]),
-                               sample["next_obs"], float(sample["reward"]))
-        self._train_autoencoder(sample["obs"])
-        self._train_autoencoder(sample["next_obs"])
+                               sample["next_obs"], float(sample["reward"]), record=record)
+        self._train_autoencoder(sample["obs"], record=record)
+        self._train_autoencoder(sample["next_obs"], record=False)
 
     def observe_transition(self, observation: Sequence[float], action: int,
                            next_observation: Sequence[float], reward: float) -> None:
@@ -206,9 +219,9 @@ class NeuralLatentWorldModel:
         if len(self.replay) > self.replay_capacity:
             del self.replay[0]
         self.transitions_seen += 1
-        self._train_sample(sample)
+        self._train_sample(sample, record=True)
         if len(self.replay) > 1:
-            self._train_sample(self.rng.choice(self.replay))
+            self._train_sample(self.rng.choice(self.replay), record=False)
 
     @property
     def ready(self) -> bool:
@@ -265,6 +278,31 @@ class NeuralLatentWorldModel:
                 "path": list(best[3]), "horizon": horizon,
                 "beam_width": beam_width, "predictions": evaluated}
 
+    def evaluate(self, samples: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        """Score frozen predictions on transitions the model never trained on.
+
+        Baselines: next latent = current latent (persistence), and reward = mean reward
+        in the replay pool (what a model that ignores the observation would predict).
+        """
+        if not samples:
+            return {"heldout_transitions": 0}
+        replay_rewards = [float(s["reward"]) for s in self.replay] or [0.0]
+        constant = sum(replay_rewards) / len(replay_rewards)
+        reward_err = latent_err = persist_err = const_err = 0.0
+        for s in samples:
+            z = self.encode(s["obs"]); z_next = self.encode(s["next_obs"])
+            pred_z, pred_r = self.predict(z, int(s["action"]))
+            reward_err += abs(pred_r - float(s["reward"]))
+            const_err += abs(constant - float(s["reward"]))
+            latent_err += sum((pred_z[i] - z_next[i]) ** 2 for i in range(LATENT_DIM)) / LATENT_DIM
+            persist_err += sum((z[i] - z_next[i]) ** 2 for i in range(LATENT_DIM)) / LATENT_DIM
+        k = float(len(samples))
+        return {"heldout_transitions": len(samples),
+                "heldout_reward_mae": round(reward_err / k, 4),
+                "heldout_constant_reward_mae": round(const_err / k, 4),
+                "heldout_latent_mse": round(latent_err / k, 5),
+                "heldout_persistence_latent_mse": round(persist_err / k, 5)}
+
     def metrics(self) -> dict[str, Any]:
         return {
             "latent_model_ready": self.ready,
@@ -282,7 +320,8 @@ class NeuralLatentWorldModel:
 
     def state_dict(self) -> dict[str, Any]:
         return {
-            "version": 1,
+            "version": 3,
+            "feature_dim": FEATURE_DIM,
             "learning_rate": self.learning_rate,
             "replay_capacity": self.replay_capacity,
             "replay": self.replay,
@@ -303,13 +342,20 @@ class NeuralLatentWorldModel:
         }
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
-        if state.get("version") != 1:
-            raise ValueError("unsupported latent model checkpoint version")
-        for name in ("encoder_w", "encoder_b", "decoder_w", "decoder_b",
-                     "dynamics_w1", "dynamics_b1", "dynamics_w2", "dynamics_b2"):
+        if state.get("version") != 3 or state.get("feature_dim") != FEATURE_DIM:
+            raise ValueError("unsupported latent model checkpoint version or input size")
+        shapes = {"encoder_w": (LATENT_DIM, FEATURE_DIM), "encoder_b": (LATENT_DIM,),
+                  "decoder_w": (FEATURE_DIM, LATENT_DIM), "decoder_b": (FEATURE_DIM,),
+                  "dynamics_w1": (HIDDEN_DIM, LATENT_DIM + ACTION_COUNT), "dynamics_b1": (HIDDEN_DIM,),
+                  "dynamics_w2": (LATENT_DIM + 1, HIDDEN_DIM), "dynamics_b2": (LATENT_DIM + 1,)}
+        for name, shape in shapes.items():
             if name not in state:
                 raise ValueError("latent model checkpoint is missing " + name)
-            setattr(self, name, state[name])
+            value = state[name]
+            ok = len(value) == shape[0] and (len(shape) == 1 or all(len(row) == shape[1] for row in value))
+            if not ok:
+                raise ValueError("latent model checkpoint has the wrong shape for " + name)
+            setattr(self, name, value)
         self.learning_rate = float(state["learning_rate"])
         self.replay_capacity = int(state["replay_capacity"])
         self.replay = list(state.get("replay", []))[-self.replay_capacity:]

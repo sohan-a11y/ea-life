@@ -4,7 +4,7 @@ This branch extends EA-Life v3 with a small learned neural latent representation
 
 This is **an artificial-life simulation, not evidence of consciousness or general intelligence**. Each capability has an explicit implementation and measurable proxy; research conclusions should come from repeated controlled runs, baselines and exports, not a single visually interesting run.
 
-## What is new in v3
+## Inherited from v3
 
 - **Four behavior roles:** forager, explorer, navigator and hazard-avoider. Run a mixed ecology or a single-task scenario.
 - **Predictive world model:** each organism learns a bounded state/action-to-next-state distribution and reward estimate, using online counts and reward moments; prediction error, next-state accuracy and surprise are tracked separately from the Q-learning TD error.
@@ -41,13 +41,41 @@ Individual controls for custom comparisons are `--disable-world-model` and `--di
 
 ## Research milestone v4: neural latent model and imagination
 
-The neural latent model learns a compact representation from 14 normalized local-observation features using an encoder/decoder, then learns latent transition and reward prediction with a small neural network. New transitions enter a bounded pool shared across organisms. After 48 transitions, a beam search can roll predicted latent states forward and score multi-step action sequences. The default horizon is four; supported values are 1 to 12, with beam width 1 to 8.
+The neural latent model learns a compact representation from 18 normalized features (14 local observations plus a one-hot of the organism's task) using an encoder/decoder, then learns latent transition and reward prediction with a small neural network. New transitions enter a bounded pool shared across organisms. After 48 transitions, a beam search can roll predicted latent states forward and score multi-step action sequences. The default horizon is four; supported values are 1 to 12, with beam width 1 to 8.
 
 ~~~bash
 python experiments.py --latent-ablation-suite --seeds 10 --ticks 2000 --grid-size 48 --population 8 --max-population 16 --max-organisms 200 --imagination-horizon 4 --imagination-beam-width 3 --output v4-latent-ablation.csv
 ~~~
 
 The four matched-seed conditions compare the v3 control, latent learning without planning, horizon-one planning and long-horizon imagination. This is a research prototype with manually implemented backpropagation and tabular-sized networks, not a production model-based reinforcement learning system. Online losses are not held-out evidence that the model generalizes. It is expected to run more slowly than v3; first test small populations and grids, then scale up. See [the v4 protocol](docs/research-v4.md).
+
+### Review notes (16 Oct 2026): measured before drawing conclusions
+
+These were measured on this branch; the scripts are in the review package.
+- The hand-written gradients are correct (finite-difference check). Runs are deterministic for a given seed.
+- **The task is now part of the latent observation.** Rewards depend on the task, and the model is shared by all organisms. Without the task, its reward error in the mixed scenario could not fall below what a linear model reaches; a linear model that knows the task had 61% lower held-out error (3 seeds).
+- **Reported online errors are now prequential.** They count only new transitions, measured before the model trains on them. Previously, half of each average came from replayed samples the model had already trained on.
+- **The dynamics model now predicts the change in the latent state** (next = current + change), and its outputs start small. Measured on 3 seeds (900 ticks of online training with imagination off, then the frozen model scored on the next 300 ticks):
+  - Held-out latent error, relative to simply predicting "next latent = current", went from 1.21 to 0.40 (mixed) and from 2.26 to 0.51 (forage). The original model was worse than that trivial baseline; adding the task alone did not change this.
+  - Held-out reward error fell from 0.271 to 0.160 (mixed) and from 0.108 to 0.078 (forage).
+  - A linear model on the same inputs still predicts reward better (0.096 and 0.044), so the reward head remains the weak part.
+- **`latent_model_only` behaves exactly like `v3_control`.** The model trains but never influences a decision, so its outcomes are identical on every seed. Use that arm for model-quality metrics only.
+- **In the default protocol (grid 48, 8 → 16 organisms, 2000 ticks), the population stays at its cap.** So `alive` and `deaths` cannot show differences. Food regrows only up to 0.09 and coverage counts cells above 0.15, so eaten rich patches never come back: food coverage fell from 0.57 to below 0.01 between ticks 1500 and 1900 (5 seeds, documented settings). Hazards fade from 0.75 to 0.25, so the tasks change during a run. The primary outcome is `reward_per_agent_tick`, the quantity the planner maximises.
+- **In a 4-seed pilot (mixed, 1000 ticks), imagination lowered reward per agent-tick in every seed, before and after the fixes.** Control: 0.784. One-step planning: −0.035 with the original model, −0.044 with the fixed model. Four-step imagination: −0.038 and −0.037. Beacon goals fell from 23 per run to about 8–9. Plans changed about 37% of decisions.
+  - A likely reason: the default policy already scores each neighbouring cell with its true resource, hazard and novelty. That is an exact one-step look-ahead, so a learned one-step prediction can only add error. The 4-step plan has no value estimate at its end, so it cannot see gains beyond 4 steps.
+  - To test imagination fairly, compare against a policy that lacks this look-ahead, or add a leaf value (for example from the Q-table). With 4 seeds the smallest possible p is 0.125, so treat this as a direction to test, not a result.
+- **The curiosity score, learning progress and the Wikipedia research pathway** (terms, topics, fact counts) are recorded and displayed, but they never enter action choice, reward or energy. They only decide when a research request is sent.
+- **New tools.**
+  - `--heldout-ticks N` freezes the latent model for the last N ticks and reports held-out error next to two baselines: "next latent = current" and "constant reward".
+  - `--imagination-bonus` sets how strongly the plan steers choices.
+  - `latent_plan_adoption_rate` and `latent_plan_promotion_rate` measure how often plans are followed, and how often the bonus is what made the plan's action a top choice.
+  - `python analyze.py results.csv` gives paired differences, 95% intervals, sign-flip p-values and Holm correction.
+
+~~~bash
+python experiments.py --latent-ablation-suite --seeds 10 --ticks 2000 --heldout-ticks 200 --grid-size 48 --population 8 --max-population 16 --max-organisms 200 --output v4-latent-ablation.csv
+python analyze.py v4-latent-ablation.csv
+python -m unittest discover -s tests -t . -v
+~~~
 
 ## Run locally
 
@@ -114,6 +142,7 @@ The default scenario is mixed, with twelve initial organisms and a maximum live 
 | SIM_IMAGINATION_ENABLED | 1 | Allow imagined action plans to influence action choice |
 | SIM_IMAGINATION_HORIZON | 4 | Imagined transitions per plan, 1 to 12 |
 | SIM_IMAGINATION_BEAM_WIDTH | 3 | Candidate sequences retained per depth, 1 to 8 |
+| SIM_IMAGINATION_BONUS | 0.45 | Score bonus for the imagined plan's first action, 0 to 10 (0 = no influence) |
 | RESUME | 0 | Set to 1 to load the checkpoint volume |
 
 For a controlled comparison, change one factor at a time, record the seed and scenario, and compare multiple seeds. A single run is not evidence that a mutation or behavior is generally superior.
