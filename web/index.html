@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0f15">
-<title>EA-Life v3 Research Platform</title>
+<title>EA-Life v4 Neural Latent Research Platform</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <div class="layout">
 <header class="topbar">
-  <div class="brand"><span class="mark">E</span><span><small>ARTIFICIAL LIFE / EXPERIMENTAL SYSTEMS</small><strong>EA-Life <em>v2 Research Platform</em></strong></span></div>
+  <div class="brand"><span class="mark">E</span><span><small>ARTIFICIAL LIFE / EXPERIMENTAL SYSTEMS</small><strong>EA-Life <em>v4 Neural Latent</em></strong></span></div>
   <div class="connection"><i id="dot"></i><span id="status">Waiting for simulation snapshot</span><b>BOUNDED SANDBOX</b></div>
 </header>
 <main>
 <section class="hero">
-  <div><div class="eyebrow">RESEARCH SUITE · V3.0</div><h1>Predictive life.<br><em>Collective ecology.</em></h1><p>Inspect bounded learned predictions and shared, decaying resource and danger trails. Run matched ablations to test whether prediction and collective signals improve the organisms' measured outcomes.</p><div class="actions"><button id="pause" class="btn primary">Ⅱ Pause</button><button id="resume" class="btn secondary">▶ Resume</button><button id="reset" class="btn danger">↻ Reset experiment</button></div></div>
+  <div><div class="eyebrow">RESEARCH SUITE · V4.0</div><h1>Latent imagination.<br><em>Emergent life.</em></h1><p>Organisms learn a compact latent representation of their local world, predict transitions and rewards with a neural model, and search imagined action sequences before acting. All learning and planning remain bounded and inspectable.</p><div class="actions"><button id="pause" class="btn primary">Ⅱ Pause</button><button id="resume" class="btn secondary">▶ Resume</button><button id="reset" class="btn danger">↻ Reset experiment</button></div></div>
   <div class="hero-art" aria-hidden="true"><div class="ring r1"></div><div class="ring r2"></div><div class="glow"></div><i class="spark s1"></i><i class="spark s2"></i><i class="spark s3"></i><div class="hero-caption"><strong id="tickHero">TICK 000000</strong><span>SIMULATED WORLD · ISOLATED LIFE PROCESS</span></div></div>
 </section>
 <section class="metric-grid">
@@ -53,12 +53,16 @@
   <article class="panel"><div class="section-head"><div><label>PREDICTIVE WORLD MODEL / 06</label><h2>Outcome prediction</h2></div><span class="tag">PER-ORGANISM</span></div><div class="world-stats"><div><label>REWARD MAE</label><strong id="wmError">0.000</strong></div><div><label>NEXT-STATE ACCURACY</label><strong id="wmAccuracy">0.0%</strong></div><div><label>MODEL ENTRIES</label><strong id="wmEntries">0</strong></div><div><label>SURPRISE</label><strong id="wmSurprise">0.000</strong></div></div><p class="small-note">Reward MAE is the mean absolute error of prior reward predictions. Next-state accuracy measures the previous most-common predicted state against an observed transition. These are descriptive, policy-dependent diagnostics.</p></article>
   <article class="panel"><div class="section-head"><div><label>COLLECTIVE SIGNALS / 07</label><h2>Shared environmental memory</h2></div><span class="tag">DECAYING FIELDS</span></div><div class="world-stats"><div><label>SIGNAL COVERAGE</label><strong id="collectiveCoverage">0.0%</strong></div><div><label>FORAGE TRACE MASS</label><strong id="resourceTrailMass">0.000</strong></div><div><label>DANGER TRACE MASS</label><strong id="dangerTrailMass">0.000</strong></div><div><label>FIELD STATUS</label><strong id="collectiveStatus">ACTIVE</strong></div></div><p class="small-note">Resource and hazard traces are shared through the environment, not direct agent-to-agent messages. They decay each tick; disabling collective behavior removes the deposit and attraction/avoidance pathways.</p></article>
 </section>
+<section class="secondary-grid latent-model-panel">
+  <article class="panel"><div class="section-head"><div><label>NEURAL LATENT MODEL / 08</label><h2>Representation and replay</h2></div><span class="tag">LEARNED ONLINE</span></div><div class="world-stats"><div><label>MODEL STATUS</label><strong id="latentStatus">WARMING</strong></div><div><label>TRANSITIONS</label><strong id="latentTransitions">0</strong></div><div><label>REPLAY POOL</label><strong id="latentReplay">0 / 2048</strong></div><div><label>RECONSTRUCTION LOSS</label><strong id="latentReconstruction">0.000</strong></div></div><p class="small-note">A shared 14-feature encoder maps observations to an 8-value latent vector. A decoder reconstructs features; the learned dynamics network predicts the next latent vector and immediate reward. Experience replay is capped to bound RAM.</p></article>
+  <article class="panel"><div class="section-head"><div><label>LONG-HORIZON IMAGINATION / 09</label><h2>Predicted action sequences</h2></div><span class="tag">BEAM SEARCH</span></div><div class="world-stats"><div><label>DYNAMICS LOSS</label><strong id="latentDynamics">0.000</strong></div><div><label>REWARD MAE</label><strong id="latentRewardMae">0.000</strong></div><div><label>PLAN HORIZON</label><strong id="latentHorizon">0</strong></div><div><label>PREDICTED STEPS</label><strong id="latentPredictions">0</strong></div></div><p class="small-note">Planning is activated after 48 observed transitions. A bounded beam search rolls the model forward for the configured horizon and gives the selected first action a modest preference. The model is not allowed to execute imagined states in the real world.</p></article>
+</section>
 <section class="panel registry">
   <div class="section-head"><div><label>LINEAGES / 05</label><h2>Organism registry</h2></div><span id="registryCount" class="tag">0 ORGANISMS</span></div>
   <div class="table-wrap"><table><thead><tr><th>ORGANISM</th><th>ROLE</th><th>GEN.</th><th>ENERGY</th><th>CURIOSITY</th><th>AGE</th><th>OFFSPRING</th><th>GOALS</th><th>RESEARCH</th><th>STATE</th></tr></thead><tbody id="registry"><tr><td colspan="10">Waiting for the first snapshot…</td></tr></tbody></table></div>
 </section>
 <section class="method-note"><strong>Experiment integrity</strong><p>EA-Life is a bounded artificial-life model. The simulator has no network interface; a separate broker accepts fixed topic IDs and returns short snippets. The dashboard receives public observations, not private genomes, Q tables or episodic memories. Broker allowlisting is application-level and should be backed by host egress controls for a stronger threat model.</p></section>
-<footer><span>EA-LIFE / ARTIFICIAL LIFE RESEARCH</span><span>V3.0 · PREDICTIVE, COLLECTIVE, TESTABLE</span></footer>
+<footer><span>EA-LIFE / ARTIFICIAL LIFE RESEARCH</span><span>V4.0 · LATENT, IMAGINATIVE, BOUNDED</span></footer>
 </main>
 </div>
 <script src="/app.js" defer></script>
