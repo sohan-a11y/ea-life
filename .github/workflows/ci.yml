@@ -24,4 +24,18 @@ jobs:
       - name: Smoke test four-condition research ablation
         run: python experiments.py --ablation-suite --seeds 1 --ticks 8 --grid-size 32 --population 4 --max-population 4 --max-organisms 4 --output /tmp/ea-life-ablation.csv && test "$(wc -l < /tmp/ea-life-ablation.csv)" -eq 5
       - name: Validate Compose
-        run: docker compose config -q
+        run: docker compose -f compose.yaml -f compose.ci.yaml config -q
+      - name: Container integration smoke test
+        run: |
+          docker compose -f compose.yaml -f compose.ci.yaml up --build -d
+          trap 'docker compose -f compose.yaml -f compose.ci.yaml down -v' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8000/api/state -o /tmp/ea-life-state.json; then
+              if python -c 'import json; s=json.load(open("/tmp/ea-life-state.json")); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
+                exit 0
+              fi
+            fi
+            sleep 1
+          done
+          docker compose -f compose.yaml -f compose.ci.yaml logs --no-color
+          exit 1

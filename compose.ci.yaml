@@ -1,0 +1,13 @@
+services:
+  life:
+    environment:
+      SIM_GRID: "32"
+      SIM_POPULATION: "4"
+      SIM_MAX_POPULATION: "4"
+      SIM_MAX_ORGANISMS: "4"
+      SIM_TICKS: "25"
+      TICK_SLEEP: "0"
+      SAVE_EVERY: "1"
+      REQUEST_DIR: /tmp/requests
+      RESULT_DIR: /tmp/results
+      RESUME: "0"
