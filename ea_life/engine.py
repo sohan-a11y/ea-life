@@ -316,9 +316,13 @@ class Simulation:
         if self.result_dir is not None:
             try:
                 broker_state=json.loads((self.result_dir/"broker_status.json").read_text(encoding="utf-8"))
-                if broker_state.get("state")=="exhausted": return
-            except (OSError,json.JSONDecodeError):
+                state=broker_state.get("state")
+                stale=(state=="active" and
+                       time.time()-float(broker_state.get("updated_at",0.0))>30.0)
+                if state=="exhausted" or stale: return
+            except (OSError,json.JSONDecodeError,TypeError,ValueError):
                 pass
+        if len(list(self.request_dir.glob("req_*.json")))>=128: return
         if self.tick-agent["last_request_tick"]<240: return
         unseen=[key for key in TOPICS if key not in agent["known_topics"]]
         if not unseen: return

@@ -22,13 +22,24 @@ TOPICS={
 }
 ENDPOINT="https://en.wikipedia.org/w/api.php"
 
+class AllowlistedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Allow redirects only to the fixed HTTPS Wikipedia API host."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target=urllib.parse.urlparse(newurl)
+        if (target.scheme!="https" or target.hostname!="en.wikipedia.org"
+                or target.username is not None or target.password is not None
+                or target.port not in (None,443)):
+            raise urllib.error.HTTPError(newurl,code,"redirect destination blocked",headers,fp)
+        return super().redirect_request(req,fp,code,msg,headers,newurl)
+
 def retrieve(topic_id:str)->list[dict]:
     if topic_id not in TOPICS: raise ValueError("topic not allowlisted")
     query=urllib.parse.urlencode({"action":"query","list":"search","srsearch":TOPICS[topic_id],
                                   "format":"json","utf8":"1","srlimit":"3"})
     request=urllib.request.Request(ENDPOINT+"?"+query,
         headers={"User-Agent":"EA-Life-Research-Broker/2.0 (educational read-only prototype)"},method="GET")
-    with urllib.request.urlopen(request,timeout=8) as response:
+    opener=urllib.request.build_opener(AllowlistedRedirectHandler())
+    with opener.open(request,timeout=8) as response:
         if response.status!=200: raise RuntimeError("upstream status was not 200")
         body=response.read(MAX_BYTES+1)
     if len(body)>MAX_BYTES: raise ValueError("response size exceeded")
@@ -52,7 +63,7 @@ def write_status(state: str, completed: int) -> None:
 
 def main():
     REQUEST_DIR.mkdir(parents=True,exist_ok=True); RESULT_DIR.mkdir(parents=True,exist_ok=True)
-    completed=0; last=0.0
+    completed=0; last=0.0; last_status=time.monotonic()
     write_status("active",completed)
     print("Broker: allowlisted topic IDs, HTTPS GET only, no listener.",flush=True)
     while completed<MAX_REQUESTS:
@@ -79,6 +90,9 @@ def main():
                 temp.write_text(json.dumps(result),encoding="utf-8"); temp.replace(output)
             completed+=1
         time.sleep(POLL_SECONDS)
+        if time.monotonic()-last_status>=10:
+            write_status("active",completed)
+            last_status=time.monotonic()
     write_status("exhausted",completed)
     print("Broker request budget reached; marked exhausted.",flush=True)
 
