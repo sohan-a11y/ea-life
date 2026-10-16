@@ -1,6 +1,6 @@
-# EA-Life v3 — predictive and collective artificial-life research platform
+# EA-Life v4 research branch — neural latent world model and imagination
 
-EA-Life v3 extends the grid experiment with per-organism predictive transition learning and shared environmental signals. It is a configurable research platform for embodied agents, intrinsic motivation, bounded memory, evolutionary variation, emergent collective behavior, and repeatable controlled experiments. It is split into a network-isolated simulator, a narrow read-only research broker, and a dashboard that exposes observations rather than private genome or memory state.
+This branch extends EA-Life v3 with a small learned neural latent representation, a latent transition/reward model, a shared bounded experience-replay pool and multi-step beam-search imagination. The model is implemented in pure Python to fit the existing network-isolated life container. The code lives on `research/v4-neural-latent-imagination`; it is intentionally separate from `main` while the research prototype is evaluated. The dashboard exposes diagnostic metrics rather than model weights or replay observations.
 
 This is **an artificial-life simulation, not evidence of consciousness or general intelligence**. Each capability has an explicit implementation and measurable proxy; research conclusions should come from repeated controlled runs, baselines and exports, not a single visually interesting run.
 
@@ -38,6 +38,16 @@ python experiments.py --all-scenarios --ablation-suite --seeds 10 --ticks 2000 -
 ~~~
 
 Individual controls for custom comparisons are `--disable-world-model` and `--disable-collective`. Each CSV row records which pathways were enabled. Details and hypotheses are in [the v3 research protocol](docs/research-v3.md).
+
+## Research milestone v4: neural latent model and imagination
+
+The neural latent model learns a compact representation from 14 normalized local-observation features using an encoder/decoder, then learns latent transition and reward prediction with a small neural network. New transitions enter a bounded pool shared across organisms. After 48 transitions, a beam search can roll predicted latent states forward and score multi-step action sequences. The default horizon is four; supported values are 1 to 12, with beam width 1 to 8.
+
+~~~bash
+python experiments.py --latent-ablation-suite --seeds 10 --ticks 2000 --grid-size 48 --population 8 --max-population 16 --max-organisms 200 --imagination-horizon 4 --imagination-beam-width 3 --output v4-latent-ablation.csv
+~~~
+
+The four matched-seed conditions compare the v3 control, latent learning without planning, horizon-one planning and long-horizon imagination. This is a research prototype with manually implemented backpropagation and tabular-sized networks, not a production model-based reinforcement learning system. Online losses are not held-out evidence that the model generalizes. It is expected to run more slowly than v3; first test small populations and grids, then scale up. See [the v4 protocol](docs/research-v4.md).
 
 ## Run locally
 
@@ -98,13 +108,18 @@ The default scenario is mixed, with twelve initial organisms and a maximum live 
 | SIM_WORLD_MODEL_ENABLED | 1 | Set to 0 to disable the predictive transition model |
 | SIM_WORLD_MODEL_STATES | 256 | Maximum state/action entries per organism |
 | SIM_COLLECTIVE_ENABLED | 1 | Set to 0 to disable shared environmental trails |
+| SIM_LATENT_MODEL_ENABLED | 1 | Train the neural latent model and replay pool |
+| SIM_IMAGINATION_ENABLED | 1 | Allow imagined action plans to influence action choice |
+| SIM_IMAGINATION_HORIZON | 4 | Imagined transitions per plan, 1 to 12 |
+| SIM_IMAGINATION_BEAM_WIDTH | 3 | Candidate sequences retained per depth, 1 to 8 |
 | RESUME | 0 | Set to 1 to load the checkpoint volume |
 
 For a controlled comparison, change one factor at a time, record the seed and scenario, and compare multiple seeds. A single run is not evidence that a mutation or behavior is generally superior.
 
 ## Architecture
 
-- **ea_life/engine.py:** world state, bounded predictive transition models, shared trail dynamics, agent policies, learning, memory, curiosity, reproduction and metrics.
+- **ea_life/engine.py:** world state, v3 tabular model, collective signals, and integration with latent planning.
+- **ea_life/latent_world_model.py:** neural encoder/decoder, latent transition/reward model, bounded shared replay, multi-step imagination and model diagnostics.
 - **runner.py:** simulation lifecycle, checkpointing, event persistence and pause/resume/reset flags.
 - **dashboard.py:** standard-library HTTP server with narrow same-origin control actions.
 - **broker.py:** fixed-topic, read-only reference lookup.
@@ -122,4 +137,4 @@ The broker's destination restriction is implemented in application code; Compose
 
 ## Current scientific limitations
 
-The action-value model and predictive transition model are small tabular systems; semantic memory is a bounded count of words from short snippets, and roles are simple task labels. The world model does not perform latent-state learning or long-horizon imagination, and collective traces do not imply centralized planning. This is not a language-capable agent, a general world model or a neural cellular automaton. Next research work should investigate multi-step predictive rollouts, richer latent representations, independent resource dynamics, spatial neural cellular automata, and preregistered multi-seed studies. Until those are measured, treat the current modules as testable prototypes.
+The v4 neural latent model is a compact pure-Python research prototype. It learns from a hand-engineered local feature vector, not pixels; shares parameters across organisms; uses a smoothed latent state rather than a stochastic latent distribution; and may exploit inaccuracies during imagined rollouts. The hand-coded gradients are slower and less mature than a framework such as PyTorch. Evaluate on held-out transitions and paired seeds before making performance claims. This is not evidence of consciousness, general intelligence or biological life.
