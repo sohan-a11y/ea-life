@@ -97,7 +97,7 @@ The CLI prints one summary row per scenario and seed and writes CSV for analysis
    docker compose up --build -d
    ~~~
 
-4. Open the forwarded port 8000 named EA-Life v2 dashboard.
+4. Open the forwarded port 8000 named EA-Life dashboard.
 
 Codespaces is a development session, not a permanent host. The dashboard runs only while the Codespace and containers are running.
 
@@ -139,6 +139,8 @@ For a controlled comparison, change one factor at a time, record the seed and sc
 - **tests/:** deterministic unit and protocol tests.
 
 ## Security boundaries
+
+The dashboard binds to loopback by default (`127.0.0.1:8000`). Change this only if you have configured appropriate authentication, TLS and network restrictions.
 
 The life container uses network mode none, a non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges, and CPU, memory and process limits. The dashboard does not mount the request queue or inspect genomes. The broker has no listener or published port and only accepts fixed topic identifiers.
 
