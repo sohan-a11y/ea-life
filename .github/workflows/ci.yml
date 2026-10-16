@@ -29,12 +29,10 @@ jobs:
         run: |
           docker compose -f compose.yaml -f compose.ci.yaml up --build -d
           trap 'docker compose -f compose.yaml -f compose.ci.yaml down -v' EXIT
-          port="$(docker compose -f compose.yaml -f compose.ci.yaml port dashboard 8000)"
-          printf 'Dashboard port binding: %s\n' "$port"
-          case "$port" in
-            127.0.0.1:*) ;;
-            *) echo "Dashboard must bind to loopback only"; exit 1 ;;
-          esac
+          docker compose -f compose.yaml -f compose.ci.yaml config | grep -q 'host_ip: 127.0.0.1'
+          bindings="$(docker inspect "$(docker compose -f compose.yaml -f compose.ci.yaml ps -q dashboard)" --format '{{json .HostConfig.PortBindings}}')"
+          printf 'Dashboard runtime port bindings: %s\n' "$bindings"
+          printf '%s' "$bindings" | grep -q '127.0.0.1'
           for attempt in $(seq 1 30); do
             if docker compose -f compose.yaml -f compose.ci.yaml exec -T dashboard python -c 'import json,urllib.request; s=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/state",timeout=2)); assert s["ok"]; assert s["grid_size"] == 32; assert len(s["resource_trails"]) == 32; assert len(s["danger_trails"]) == 32'; then
               exit 0
