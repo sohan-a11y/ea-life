@@ -1,0 +1,158 @@
+{
+ "jobs": [
+  [
+   "v5_nca",
+   "engine",
+   20262901
+  ],
+  [
+   "v5_nca",
+   "decay",
+   20262901
+  ],
+  [
+   "v5_nca",
+   "nca",
+   20262901
+  ],
+  [
+   "v5_nca",
+   "linear",
+   20262901
+  ],
+  [
+   "v5_nca",
+   "engine",
+   20262902
+  ],
+  [
+   "v5_nca",
+   "decay",
+   20262902
+  ],
+  [
+   "v5_nca",
+   "nca",
+   20262902
+  ],
+  [
+   "v5_nca",
+   "linear",
+   20262902
+  ]
+ ],
+ "results": [
+  {
+   "reward_per_agent_tick": 1.1092,
+   "mean_energy": 99.839,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5135,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0403,
+   "danger_trail_mass": 0.0008,
+   "collective_signal_coverage": 0.3186,
+   "state_hash": "596e0cd1c9260791",
+   "seconds": 3.6
+  },
+  {
+   "reward_per_agent_tick": 1.1092,
+   "mean_energy": 99.839,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5135,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0403,
+   "danger_trail_mass": 0.0008,
+   "collective_signal_coverage": 0.3186,
+   "state_hash": "596e0cd1c9260791",
+   "seconds": 3.56
+  },
+  {
+   "reward_per_agent_tick": 1.1092,
+   "mean_energy": 99.839,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5135,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0403,
+   "danger_trail_mass": 0.0008,
+   "collective_signal_coverage": 0.3186,
+   "state_hash": "596e0cd1c9260791",
+   "seconds": 12.68
+  },
+  {
+   "reward_per_agent_tick": 1.1092,
+   "mean_energy": 99.839,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5135,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0403,
+   "danger_trail_mass": 0.0008,
+   "collective_signal_coverage": 0.3186,
+   "state_hash": "596e0cd1c9260791",
+   "seconds": 9.58
+  },
+  {
+   "reward_per_agent_tick": 1.1654,
+   "mean_energy": 99.963,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5421,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0438,
+   "danger_trail_mass": 0.0007,
+   "collective_signal_coverage": 0.3003,
+   "state_hash": "bb5be55483997068",
+   "seconds": 9.49
+  },
+  {
+   "reward_per_agent_tick": 1.1654,
+   "mean_energy": 99.963,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5421,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0438,
+   "danger_trail_mass": 0.0007,
+   "collective_signal_coverage": 0.3003,
+   "state_hash": "bb5be55483997068",
+   "seconds": 3.33
+  },
+  {
+   "reward_per_agent_tick": 1.1654,
+   "mean_energy": 99.963,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5421,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0438,
+   "danger_trail_mass": 0.0007,
+   "collective_signal_coverage": 0.3003,
+   "state_hash": "bb5be55483997068",
+   "seconds": 10.79
+  },
+  {
+   "reward_per_agent_tick": 1.1654,
+   "mean_energy": 99.963,
+   "alive": 16,
+   "deaths": 0,
+   "births": 8,
+   "resource_coverage": 0.5421,
+   "goals_reached": 0,
+   "resource_trail_mass": 0.0438,
+   "danger_trail_mass": 0.0007,
+   "collective_signal_coverage": 0.3003,
+   "state_hash": "bb5be55483997068",
+   "seconds": 4.94
+  }
+ ]
+}

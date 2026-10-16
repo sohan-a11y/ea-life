@@ -428,6 +428,20 @@ class Simulation:
         self._event("research",agent["id"]+" absorbed a bounded reference result",
                     {"organism_id":agent["id"],"topic_id":topic,"pages":min(3,len(result.get("pages",[])))})
 
+    def _update_trails(self):
+        """End-of-tick update of the shared trail fields. With no rule installed this is the original
+        hand-coded rule: each cell decays on its own (x0.985 food trail, x0.96 danger trail)."""
+        rule=getattr(self,"trail_rule",None)
+        if rule is None:
+            for i in range(len(self.resource_trails)):
+                self.resource_trails[i]*=.985
+                if self.resource_trails[i]<.001: self.resource_trails[i]=0.0
+            for i in range(len(self.danger_trails)):
+                self.danger_trails[i]*=.96
+                if self.danger_trails[i]<.001: self.danger_trails[i]=0.0
+        else:
+            self.resource_trails,self.danger_trails=rule.update(self.resource_trails,self.danger_trails,self.config.grid_size)
+
     def step(self):
         n=self.config.grid_size
         living_start=[a for a in self.agents if a["alive"]]
@@ -516,14 +530,10 @@ class Simulation:
                             {"organism_id":agent["id"],"age":agent["age"],"generation":agent["generation"]})
         for i,value in enumerate(self.resources):
             if value<.09: self.resources[i]=min(.09,value+.0025)
-            if self.config.collective_enabled:
-                self.resource_trails[i]*=.985
-                if self.resource_trails[i]<.001: self.resource_trails[i]=0.0
         for i,value in enumerate(self.hazards):
             if value>.01: self.hazards[i]=max(0.0,value-.00025)
-            if self.config.collective_enabled:
-                self.danger_trails[i]*=.96
-                if self.danger_trails[i]<.001: self.danger_trails[i]=0.0
+        if self.config.collective_enabled:
+            self._update_trails()
         if self.config.evolution_enabled:
             self._reproduce()
         self.tick+=1

@@ -1,0 +1,89 @@
+{
+ "written_before_any_run": "2026-10-16T13:16:08",
+ "question": "Does a learned local trail rule (NCA: every cell updated from its 3x3 neighbourhood with shared weights) beat EA-Life's hand-coded trails (per-cell deposit + decay) on foraging?",
+ "code_base": "EA-Life v4 with the review fixes (review/v4-fixes); trail update moved into a replaceable method, no other change",
+ "protocol": {
+  "scenario": "forage",
+  "grid_size": 48,
+  "initial_population": 8,
+  "max_population": 16,
+  "max_total_organisms": 200,
+  "ticks": 600,
+  "evolution": true,
+  "world_model": true,
+  "collective": true,
+  "latent_model": false,
+  "imagination": false
+ },
+ "primary_outcome": "reward_per_agent_tick (mean reward per organism per tick lived)",
+ "seeds": {
+  "train": [
+   20263001,
+   20263002,
+   20263003,
+   20263004
+  ],
+  "validation": [
+   20263101,
+   20263102,
+   20263103,
+   20263104,
+   20263105,
+   20263106,
+   20263107,
+   20263108,
+   20263109,
+   20263110
+  ],
+  "test": [
+   20263201,
+   20263202,
+   20263203,
+   20263204,
+   20263205,
+   20263206,
+   20263207,
+   20263208,
+   20263209,
+   20263210,
+   20263211,
+   20263212,
+   20263213,
+   20263214,
+   20263215,
+   20263216,
+   20263217,
+   20263218,
+   20263219,
+   20263220
+  ]
+ },
+ "arms": {
+  "reference": "hand-coded decay (x0.985 food trail, x0.96 danger trail)",
+  "no_trails": "collective signals off",
+  "fixed_ca": "hand-designed CA grid: persistence {current, slower} x diffusion {0, 0.1, 0.25} (8-neighbour mean), screened on validation",
+  "learned_linear": "learned linear 3x3 rule on the 2 visible channels (ES on train seeds)",
+  "learned_nca": "learned NCA: 4 channels (2 visible, 2 hidden), perception = identity, Sobel x/y, neighbour mean minus centre; tanh MLP 16 -> 8 -> 4 plus linear path (ES on train seeds)"
+ },
+ "training": {
+  "method": "antithetic Gaussian evolution strategies, rank-normalised fitness, Adam",
+  "population": 16,
+  "sigma": 0.05,
+  "lr": 0.03,
+  "generations": 24,
+  "fitness": "mean primary outcome over the 4 train seeds (common random numbers)",
+  "checkpoint_selection": "evaluate the mean parameters on the validation seeds every 6 generations; keep the best"
+ },
+ "selection": "the single non-reference arm with the highest mean paired difference vs reference on the 10 validation seeds goes to test",
+ "test": "reference, no_trails and the selected arm, once, on the 20 test seeds",
+ "success_rule": "selected arm beats reference on test: mean paired difference > 0, exact two-sided sign-flip p < 0.05, and relative gain >= 2%",
+ "secondary": [
+  "same comparison in the mixed scenario on the test seeds",
+  "mean energy and food coverage"
+ ],
+ "sanity_checks": [
+  "the trail hook with the default rule reproduces the unmodified engine bit for bit (2 seeds)",
+  "the NCA at its initial weights reproduces the reference bit for bit (2 seeds)"
+ ],
+ "kill_rule": "if the selected arm fails the success rule, report no evidence; no further tuning on test seeds"
+}

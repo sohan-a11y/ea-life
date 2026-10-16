@@ -78,6 +78,16 @@ python analyze.py v4-latent-ablation.csv
 python -m unittest discover -s tests -t . -v
 ~~~
 
+## v5 experiment: a learned local trail rule (neural cellular automaton)
+
+The shared trail fields were hand-coded: organisms deposit into the cell they enter, and every cell then decays on its own (x0.985 food trail, x0.96 danger trail). This branch makes that end-of-tick update replaceable and tests learned local rules, in which every cell is updated from its 3×3 neighbourhood with the same weights everywhere (a neural cellular automaton).
+
+- `ea_life/trail_rules.py`: the hand-coded rule in NumPy, hand-designed CA variants (decay plus diffusion), a learned linear 3×3 rule (20 parameters) and a learned NCA (240 parameters: 2 visible plus 2 hidden channels; perception = identity, Sobel x/y, neighbour mean minus centre; a tanh MLP plus a linear path). At their starting weights, the learned rules equal the hand-coded rule bit for bit (tested).
+- `nca_experiment/nca_trails.py`: the pre-registered experiment (evolution strategies on training seeds, selection on validation seeds, one test on held-out seeds). The protocol and the success rule are fixed in `nca_experiment/nca_trails_prereg.json`; results are in `nca_experiment/results/`.
+- Results and interpretation: `docs/research-v5-nca.md`.
+
+The simulator itself still needs no packages; the trail-rule experiments need NumPy (`pip install numpy`).
+
 ## Run on your computer without Docker
 
 Requires Python 3.10 or newer; nothing to install.
