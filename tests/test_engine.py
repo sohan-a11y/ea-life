@@ -2,6 +2,7 @@ import json
 import math
 import random
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -243,6 +244,36 @@ class EngineTests(unittest.TestCase):
         self.assertGreater(sum(row["next_counts"].values()), 0)
         sim._update_world_model(agent, "state", 0, "next-34", 1.0)
         self.assertTrue(math.isfinite(agent["world_model_surprise_sum"]))
+
+
+    def test_research_requests_stop_when_broker_is_exhausted_or_stale_and_queue_is_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            requests = root / "requests"
+            results = root / "results"
+            requests.mkdir()
+            results.mkdir()
+            (results / "broker_status.json").write_text(
+                json.dumps({"state": "exhausted", "updated_at": time.time()}), encoding="utf-8")
+            sim = Simulation(Config(grid_size=32, initial_population=1, max_population=1,
+                                   latent_model_enabled=False, imagination_enabled=False),
+                             seed=121, request_dir=requests, result_dir=results)
+            agent = sim.agents[0]
+            agent["curiosity"] = 1.0
+            sim._request_topic(agent)
+            self.assertEqual(list(requests.glob("req_*.json")), [])
+
+            (results / "broker_status.json").write_text(
+                json.dumps({"state": "active", "updated_at": time.time() - 60}), encoding="utf-8")
+            sim._request_topic(agent)
+            self.assertEqual(list(requests.glob("req_*.json")), [])
+
+            (results / "broker_status.json").write_text(
+                json.dumps({"state": "active", "updated_at": time.time()}), encoding="utf-8")
+            for i in range(128):
+                (requests / ("req_%032x.json" % i)).write_text("{}", encoding="utf-8")
+            sim._request_topic(agent)
+            self.assertEqual(len(list(requests.glob("req_*.json"))), 128)
 
     def test_action_space_has_stay_and_eight_moves(self):
         self.assertEqual(len(ACTIONS), 9)

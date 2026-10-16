@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 from broker import TOPICS, retrieve
@@ -14,6 +15,11 @@ class BrokerSafetyTests(unittest.TestCase):
     def test_arbitrary_topic_is_rejected_before_network_access(self):
         with self.assertRaises(ValueError):
             retrieve("https://example.invalid/should-not-be-requested")
+
+    def test_redirect_to_unapproved_host_is_blocked(self):
+        handler = __import__("broker").AllowlistedRedirectHandler()
+        with self.assertRaises(urllib.error.HTTPError):
+            handler.redirect_request(None, None, 302, "Found", {}, "https://example.com/")
 
     def test_broker_status_is_atomically_published(self):
         with tempfile.TemporaryDirectory() as tmp, patch("broker.RESULT_DIR", Path(tmp)):
