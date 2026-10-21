@@ -1,0 +1,81 @@
+name: Desktop organism v0.4.0 — Windows validation
+
+on:
+  push:
+    branches:
+      - desktop-organism-v04-windows-validation
+    paths:
+      - 'experiments/desktop-organism-v04/**'
+      - '.github/workflows/desktop-organism-v04-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows:
+    name: Windows / Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Extract release bundle
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'experiments/desktop-organism-v04/artificial_life_desktop_v4.zip'
+          if (-not (Test-Path -LiteralPath $archive)) { throw "Release archive missing: $archive" }
+          $destination = Join-Path $env:RUNNER_TEMP ('alife-v04-' + '${{ matrix.python-version }}'.Replace('.', '-'))
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+          $project = Join-Path $destination 'project'
+          if (-not (Test-Path -LiteralPath (Join-Path $project 'run.py'))) { throw 'Archive did not contain project/run.py' }
+          "ALIFE_PROJECT=$project" >> $env:GITHUB_ENV
+          "ALIFE_HOME=$env:RUNNER_TEMP\alife-home-${{ matrix.python-version }}" >> $env:GITHUB_ENV
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed' }
+          python -m pip install -r "$env:ALIFE_PROJECT\requirements.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          Set-Location $env:ALIFE_PROJECT
+          python -c "import pathlib, py_compile; root=pathlib.Path('.'); files=[root/'run.py', root/'desktop_pet.py', *sorted((root/'organism').glob('*.py')), *sorted((root/'tests').glob('*.py')), *sorted((root/'scripts').glob('*.py'))]; [py_compile.compile(str(path), doraise=True) for path in files]; print(f'Compiled {len(files)} Python files')"
+          if ($LASTEXITCODE -ne 0) { throw 'Python compilation failed' }
+
+      - name: Run unit and process lifecycle tests
+        shell: pwsh
+        run: |
+          Set-Location $env:ALIFE_PROJECT
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed' }
+
+      - name: Run native Tk desktop + child-process smoke test
+        shell: pwsh
+        run: |
+          Set-Location $env:ALIFE_PROJECT
+          python scripts/windows_desktop_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows Tk desktop smoke test failed' }
+
+      - name: Write job summary
+        if: always()
+        shell: pwsh
+        run: |
+          "## Desktop organism v0.4.0 Windows validation" >> $env:GITHUB_STEP_SUMMARY
+          " - Runner: `windows-latest`" >> $env:GITHUB_STEP_SUMMARY
+          " - Python: ${{ matrix.python-version }}" >> $env:GITHUB_STEP_SUMMARY
+          " - Job conclusion: ${{ job.status }}" >> $env:GITHUB_STEP_SUMMARY
