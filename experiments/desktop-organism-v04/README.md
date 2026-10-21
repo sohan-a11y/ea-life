@@ -1,12 +1,16 @@
-# Artificial Life Desktop v0.4.0 — Windows validation bundle
+# Artificial Life Desktop v0.4.1 — Windows-validated desktop organism
 
 This folder intentionally isolates the desktop organism from the EA-Life simulator.
 
-## Files
-- `artificial_life_desktop_v4.zip` — exact release bundle. Extract it; the archive contains a top-level `project/` directory.
-- `VALIDATION.md` — what has and has not been tested.
-- Repository-level Windows workflow: [desktop-organism-v04-windows.yml](../../../.github/workflows/desktop-organism-v04-windows.yml). It extracts this bundle and tests it on hosted Windows runners with Python 3.10, 3.11, and 3.12.
-- `apply_windows_diagnostics.py` — temporary test-only overlay that preserves and prints the final child-worker exception when an OS-specific lifecycle test fails. It is applied only inside the CI extraction directory to troubleshoot Python 3.12.
+## Release bundle
+- `artificial_life_desktop_v4_1.zip` — generated from the patched source after the native Windows CI matrix passed. It contains a top-level `project/` folder.
+- `artificial_life_desktop_v4.zip` — original v0.4.0 baseline used to reproduce the Windows/Python 3.12 worker issue.
+- `VALIDATION.md` — exact verification status and limits.
+- `apply_windows_diagnostics.py` — CI-only overlay that applies the heartbeat-liveness fix, adds worker boot/exit diagnostics, and updates the temporary project to v0.4.1.
+- Repository-level workflow: [desktop-organism-v04-windows.yml](../../../.github/workflows/desktop-organism-v04-windows.yml).
+
+## Windows validation
+The v0.4.1 overlay passed the automated suite and the native Tk desktop + child-process lifecycle smoke test on GitHub-hosted `windows-latest` runners using Python 3.10, 3.11, and 3.12. See the [successful workflow run](https://github.com/sohan-a11y/ea-life/actions/runs/39546342539).
 
 ## Local Windows check
 Extract the ZIP, open PowerShell in its `project` directory, and run:
@@ -15,9 +19,7 @@ Extract the ZIP, open PowerShell in its `project` directory, and run:
 powershell -ExecutionPolicy Bypass -File .\scripts\validate_windows.ps1
 ```
 
-The native desktop smoke test opens the Tk desktop pet and its console, starts a separate child-organism process, checks pause/resume/stop, and closes the app. It needs no LLM or model download.
+The native desktop smoke test opens the Tk pet and console, starts a separate child-organism process, checks pause/resume/stop, and closes the app. It needs no LLM or model download.
 
 ## Scope and caveats
-Tests cover defined software paths and are not proof of consciousness or security in all situations. Child runtimes are background processes; individual child pet overlays are not yet implemented. Hosted-runner success does not replace testing on the target user's Windows version, display scaling, and multi-monitor setup.
-
-The source archive's contents are unchanged. SHA-1 Git blob ID of the ZIP: `d488c801b0edb66998ac5fca301c6d231c64cf0b`.
+This validates the tested paths in a hosted Windows environment, not every user's Windows version, display scaling, multiple-monitor layout, startup configuration, or security property. Child runtimes are background processes; each child does not yet have its own visible pet overlay. The work is not evidence of subjective consciousness.
