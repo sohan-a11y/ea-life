@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-windows:
@@ -81,8 +81,10 @@ jobs:
         if: success()
         shell: pwsh
         run: |
+          Get-ChildItem -Path $env:ALIFE_PROJECT -Directory -Filter '__pycache__' -Recurse | Remove-Item -Recurse -Force
+          Get-ChildItem -Path $env:ALIFE_PROJECT -File -Recurse | Where-Object { $_.Extension -in @('.pyc', '.pyo') } | Remove-Item -Force
           $artifact = Join-Path $env:RUNNER_TEMP 'artificial_life_desktop_v4_1.zip'
-          Compress-Archive -Path "$env:ALIFE_PROJECT\\*" -DestinationPath $artifact -Force
+          Compress-Archive -Path "$env:ALIFE_PROJECT" -DestinationPath $artifact -Force
           if (-not (Test-Path -LiteralPath $artifact)) { throw 'Could not create patched v0.4.1 archive' }
           "ALIFE_ARTIFACT=$artifact" >> $env:GITHUB_ENV
 
@@ -103,3 +105,40 @@ jobs:
           "Runner: windows-latest" >> $env:GITHUB_STEP_SUMMARY
           "Python version: ${{ matrix.python-version }}" >> $env:GITHUB_STEP_SUMMARY
           "Job conclusion: ${{ job.status }}" >> $env:GITHUB_STEP_SUMMARY
+
+  publish-source-bundle:
+    name: Publish validated v0.4.1 bundle to isolated folder
+    if: success()
+    needs: native-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v4
+        with:
+          ref: desktop-organism-v04-windows-validation
+          persist-credentials: true
+
+      - name: Download Python 3.12 validated build
+        uses: actions/download-artifact@v4
+        with:
+          name: artificial-life-desktop-v0.4.1-windows-py3.12
+          path: ${{ runner.temp }}/validated-build
+
+      - name: Publish ZIP in the separate project folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_zip="${{ runner.temp }}/validated-build/artificial_life_desktop_v4_1.zip"
+          destination="experiments/desktop-organism-v04/artificial_life_desktop_v4_1.zip"
+          test -f "$source_zip"
+          unzip -t "$source_zip"
+          cp "$source_zip" "$destination"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$destination"
+          if git diff --cached --quiet; then
+            echo "Validated bundle is already current; no commit needed."
+          else
+            git commit -m "Publish Windows-validated Artificial Life Desktop v0.4.1"
+            git push origin HEAD:desktop-organism-v04-windows-validation
+          fi
