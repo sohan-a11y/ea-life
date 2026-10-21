@@ -5,7 +5,7 @@ This folder intentionally isolates the desktop organism from the EA-Life simulat
 ## Files
 - `artificial_life_desktop_v4.zip` — exact release bundle. Extract it; the archive contains a top-level `project/` directory.
 - `VALIDATION.md` — what has and has not been tested.
-- The repository-level workflow `.github/workflows/desktop-organism-v04-windows.yml` extracts this bundle and tests it on hosted Windows runners with Python 3.10, 3.11, and 3.12.
+- Repository-level Windows workflow: [desktop-organism-v04-windows.yml](../../../.github/workflows/desktop-organism-v04-windows.yml). It extracts this bundle and tests it on hosted Windows runners with Python 3.10, 3.11, and 3.12.
 
 ## Local Windows check
 Extract the ZIP, open PowerShell in its `project` directory, and run:
