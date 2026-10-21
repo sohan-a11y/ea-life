@@ -113,4 +113,19 @@ diagnostic = '''        snapshot = target if 'target' in locals() else latest
 if fail_line in test_src:
     test_src = test_src.replace(fail_line, diagnostic + "\n", 1)
 tests.write_text(test_src, encoding="utf-8")
+# Stamp the temporary project with its corrected version; the original uploaded baseline ZIP
+# remains unchanged until the fixed build is confirmed by Windows CI.
+(project / "VERSION").write_text("0.4.1\\n", encoding="utf-8")
+readme = project / "README.md"
+readme_text = readme.read_text(encoding="utf-8")
+readme.write_text(readme_text.replace("v0.4.0", "v0.4.1", 1), encoding="utf-8")
+changelog = project / "CHANGELOG.md"
+previous_log = changelog.read_text(encoding="utf-8") if changelog.exists() else "# Changelog\\n"
+changelog.write_text(
+    "# Changelog\\n\\n## v0.4.1 — Windows child-runtime compatibility\\n"
+    "- Use the supervisor heartbeat as the authoritative cross-platform parent-liveness check.\\n"
+    "- Emit worker boot/exit diagnostics and preserve final worker state across crash-loop protection.\\n\\n"
+    + previous_log.removeprefix("# Changelog\\n").lstrip(),
+    encoding="utf-8",
+)
 print("Applied v0.4.1 Windows heartbeat fix and failure diagnostics to CI extraction.")
