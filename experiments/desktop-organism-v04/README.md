@@ -6,6 +6,7 @@ This folder intentionally isolates the desktop organism from the EA-Life simulat
 - `artificial_life_desktop_v4.zip` — exact release bundle. Extract it; the archive contains a top-level `project/` directory.
 - `VALIDATION.md` — what has and has not been tested.
 - Repository-level Windows workflow: [desktop-organism-v04-windows.yml](../../../.github/workflows/desktop-organism-v04-windows.yml). It extracts this bundle and tests it on hosted Windows runners with Python 3.10, 3.11, and 3.12.
+- `apply_windows_diagnostics.py` — temporary test-only overlay that preserves and prints the final child-worker exception when an OS-specific lifecycle test fails. It is applied only inside the CI extraction directory to troubleshoot Python 3.12.
 
 ## Local Windows check
 Extract the ZIP, open PowerShell in its `project` directory, and run:
