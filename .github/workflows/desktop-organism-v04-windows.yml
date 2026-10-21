@@ -1,4 +1,4 @@
-name: Desktop organism v0.4.0 — Windows validation
+name: Desktop organism v0.4.1 — Windows validation
 
 on:
   push:
@@ -77,11 +77,29 @@ jobs:
           python scripts/windows_desktop_smoke.py
           if ($LASTEXITCODE -ne 0) { throw 'Native Windows Tk desktop smoke test failed' }
 
+      - name: Package validated v0.4.1 build
+        if: success()
+        shell: pwsh
+        run: |
+          $artifact = Join-Path $env:RUNNER_TEMP 'artificial_life_desktop_v4_1.zip'
+          Compress-Archive -Path "$env:ALIFE_PROJECT\\*" -DestinationPath $artifact -Force
+          if (-not (Test-Path -LiteralPath $artifact)) { throw 'Could not create patched v0.4.1 archive' }
+          "ALIFE_ARTIFACT=$artifact" >> $env:GITHUB_ENV
+
+      - name: Upload validated build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artificial-life-desktop-v0.4.1-windows-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/artificial_life_desktop_v4_1.zip
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Write job summary
         if: always()
         shell: pwsh
         run: |
-          "## Desktop organism v0.4.0 Windows validation" >> $env:GITHUB_STEP_SUMMARY
+          "## Desktop organism v0.4.1 Windows validation" >> $env:GITHUB_STEP_SUMMARY
           "Runner: windows-latest" >> $env:GITHUB_STEP_SUMMARY
           "Python version: ${{ matrix.python-version }}" >> $env:GITHUB_STEP_SUMMARY
           "Job conclusion: ${{ job.status }}" >> $env:GITHUB_STEP_SUMMARY
