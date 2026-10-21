@@ -76,6 +76,6 @@ jobs:
         shell: pwsh
         run: |
           "## Desktop organism v0.4.0 Windows validation" >> $env:GITHUB_STEP_SUMMARY
-          " - Runner: `windows-latest`" >> $env:GITHUB_STEP_SUMMARY
-          " - Python: ${{ matrix.python-version }}" >> $env:GITHUB_STEP_SUMMARY
-          " - Job conclusion: ${{ job.status }}" >> $env:GITHUB_STEP_SUMMARY
+          "Runner: windows-latest" >> $env:GITHUB_STEP_SUMMARY
+          "Python version: ${{ matrix.python-version }}" >> $env:GITHUB_STEP_SUMMARY
+          "Job conclusion: ${{ job.status }}" >> $env:GITHUB_STEP_SUMMARY
